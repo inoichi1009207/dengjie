@@ -8,8 +8,9 @@ async function api(path, method = "GET", body) {
   return j;
 }
 const SRC = { ai: "AI 拆解", manual: "手动", canvas: "Canvas", email: "邮件" };
-const todayStr = () => new Date().toISOString().slice(0, 10);
-let ME = null, CAL = { y: null, m: null };
+const fmtDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const todayStr = () => fmtDate(new Date());
+let ME = null, CAL = { y: null, m: null }, GOAL_TITLES = {}, CAL_MODE = "week", WEEK_OFF = 0;
 // 分类色:有目标的任务按目标编号取色;没有目标的按来源;课程按课名散列
 const PAL = ["var(--c0)", "var(--c1)", "var(--c2)", "var(--c3)", "var(--c4)", "var(--c5)", "var(--c6)", "var(--c7)"];
 const hashStr = (s) => { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; };
@@ -104,7 +105,7 @@ function renderStrip(box, classes, tasks, cap) {
   box.append(el("div", { class: "strip-meta", style: over ? "color:var(--red)" : "" }, `课 ${cls.toFixed(1)}h + 任务 ${tk.toFixed(1)}h = ${used.toFixed(1)}h / 日承载力 ${capN.toFixed(0)}h${over ? " · 超出 " + (used - capN).toFixed(1) + "h" : " · 空余 " + (capN - used).toFixed(1) + "h"}`));
   const legend = el("div", { class: "strip-legend" });
   const seen = new Set();
-  for (const t of tasks) { const k = t.goal_id ? `目标 ${t.goal_id}` : (SRC[t.source] || t.source); if (seen.has(k)) continue; seen.add(k); legend.append(el("span", { style: `--tc:${colorOf(t)}` }, el("i"), k)); }
+  for (const t of tasks) { const k = t.goal_id ? ((GOAL_TITLES[t.goal_id] || `目标 ${t.goal_id}`).slice(0, 14)) : (SRC[t.source] || t.source); if (seen.has(k)) continue; seen.add(k); legend.append(el("span", { style: `--tc:${colorOf(t)}` }, el("i"), k)); }
   if (classes.length) legend.append(el("span", { style: "--tc:var(--green)" }, el("i"), "课(斜纹)"));
   if (tasks.some(t => t.status === "done")) legend.append(el("span", { class: "muted" }, "划线 = 已完成,时间已花掉"));
   box.append(legend);
@@ -123,7 +124,14 @@ const editBtn = (t, refresh) => el("button", { class: "small", onclick: (e) => e
 const classLi = (s) => el("li", { class: "cls", style: `--tc:${colorOfClass(s)}` }, el("div", { class: "t" }, `${s.slot_start}-${s.slot_end} 节 · ${s.name}`, el("div", { class: "meta" }, [s.location, s.teacher].filter(Boolean).join(" · "))));
 async function loadToday() {
   const [d, w] = await Promise.all([api("/api/today"), api("/api/week")]);
+  GOAL_TITLES = d.goal_titles || {};
   $("#today-date").textContent = d.date; $("#streak").textContent = d.streak;
+  const ob = $("#onboarding"); const need = d.onboarding && (!d.onboarding.has_goal || !d.onboarding.has_schedule);
+  ob.hidden = !need;
+  if (need) { ob.innerHTML = ""; ob.append(el("h2", {}, "三步开始登阶"), el("div", { class: "onboard-steps" },
+    el("div", {}, el("b", {}, "① 立一个长期目标"), el("span", { class: "hint" }, d.onboarding.has_goal ? "已完成" : "说一句话,AI 拆成任务"), " ", el("button", { class: "small primary", onclick: () => switchTab("goals") }, d.onboarding.has_goal ? "再立一个" : "去立目标")),
+    el("div", {}, el("b", {}, "② 导入课表"), el("span", { class: "hint" }, d.onboarding.has_schedule ? "已导入" : "上传 PDF / 截图 / 文字,可投入时长自动算"), " ", el("button", { class: "small primary", onclick: () => switchTab("integrations") }, d.onboarding.has_schedule ? "重新导入" : "去导入")),
+    el("div", {}, el("b", {}, "③ 拉作业、读邮件"), el("span", { class: "hint" }, "进待确认区,你点计入才算"), " ", el("button", { class: "small", onclick: () => switchTab("integrations") }, "去接入")))); }
   ledgerCard($("#ledger-card"), w);
   const cl = $("#today-classes"); cl.innerHTML = ""; $("#today-week").textContent = d.week_no ? `第 ${d.week_no} 教学周` : "";
   if (!d.classes.length) cl.append(el("li", { class: "empty" }, "今天没课。"));
@@ -291,12 +299,14 @@ async function loadGoals() {
   }
 }
 
-// ── 日历(月) ──
+// ── 日历:周视图(默认)+ 月历 ──
 async function loadCalendar() {
+  if (CAL_MODE === "week") return loadWeekView();
   const q = CAL.y ? `?year=${CAL.y}&month=${CAL.m}` : "";
   const m = await api("/api/month" + q); CAL = { y: m.year, m: m.month };
   $("#cal-title").textContent = `${m.year} 年 ${m.month} 月`;
   ledgerCard($("#cal-ledger"), m.week);
+  $("#week-wrap").hidden = true; $("#month-wrap").hidden = false;
   const grid = $("#cal-grid"); grid.innerHTML = "";
   for (const d of m.days) {
     const isMon = new Date(d.date + "T00:00:00").getDay() === 1;
@@ -310,6 +320,31 @@ async function loadCalendar() {
   }
   $("#cal-day").hidden = true;
 }
+async function loadWeekView() {
+  const base = new Date(); base.setDate(base.getDate() + 7 * WEEK_OFF);
+  const w = await api(`/api/week?date=${fmtDate(base)}`);
+  $("#cal-title").textContent = `${w.monday} ~ ${w.sunday}${w.week_no ? " · 第 " + w.week_no + " 教学周" : ""}`;
+  ledgerCard($("#cal-ledger"), w);
+  $("#week-wrap").hidden = false; $("#month-wrap").hidden = true;
+  const grid = $("#week-grid"); grid.innerHTML = ""; const tstr = todayStr(); const cap = 10;
+  const DAYS = ["一", "二", "三", "四", "五", "六", "日"];
+  for (const d of w.days) {
+    const cls = d.slots.reduce((a, s) => a + ((s.slot_end || s.slot_start || 1) - (s.slot_start || 1) + 1) * 0.75, 0);
+    const tk = d.tasks.reduce((a, t) => a + (+t.remaining_hours || 0), 0), used = cls + tk;
+    const box = el("div", { class: "week-day" + (d.date === tstr ? " today" : ""), onclick: () => showDay({ date: d.date, classes: d.slots, tasks: d.tasks, is_today: d.date === tstr, week_no: w.week_no }) },
+      el("h4", {}, `周${DAYS[d.weekday - 1]}`, el("span", { class: "muted" }, d.date.slice(5))));
+    box.append(el("div", { class: "sec" }, d.slots.length ? `课 ${cls.toFixed(1)}h` : "没课"));
+    for (const s of d.slots) box.append(el("span", { class: "cls", style: `--tc:${colorOfClass(s)}` }, `${s.slot_start}-${s.slot_end}节 ${s.name}`));
+    box.append(el("div", { class: "sec" }, d.tasks.length ? `任务 ${tk.toFixed(1)}h` : "无任务"));
+    for (const t of d.tasks) box.append(el("span", { class: "tk" + (t.due && t.due < tstr && t.status !== "done" ? " overdue" : ""), style: `--tc:${colorOf(t)}`, title: t.title }, `${t.title}(${t.remaining_hours}h)`));
+    const mini = el("div", { class: "mini" }); const total = Math.max(cap, used);
+    mini.append(el("i", { class: "c", style: `width:${cls / total * 100}%` }), el("i", { class: "t", style: `width:${tk / total * 100}%` }));
+    box.append(mini, el("div", { class: "load" + (used > cap ? " over" : "") }, `${used.toFixed(1)} / ${cap}h${used > cap ? " 超" : ""}`));
+    grid.append(box);
+  }
+  $("#cal-day").hidden = true;
+}
+$("#cal-mode").onclick = () => { CAL_MODE = CAL_MODE === "week" ? "month" : "week"; $("#cal-mode").textContent = CAL_MODE === "week" ? "切到月历" : "切到周视图"; $("#cal-today").textContent = CAL_MODE === "week" ? "本周" : "本月"; loadCalendar(); };
 function showDay(d) {
   const box = $("#cal-day"); box.hidden = false; box.innerHTML = "";
   box.append(el("h2", {}, `${d.date} `, el("span", { class: "muted" }, d.week_no ? `第 ${d.week_no} 教学周` : "")));
@@ -334,7 +369,9 @@ function showDay(d) {
   box.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 function shiftMonth(n) { let { y, m } = CAL; if (!y) { const d = new Date(); y = d.getFullYear(); m = d.getMonth() + 1; } m += n; if (m > 12) { m = 1; y++; } if (m < 1) { m = 12; y--; } CAL = { y, m }; loadCalendar(); }
-$("#cal-prev").onclick = () => shiftMonth(-1); $("#cal-next").onclick = () => shiftMonth(1); $("#cal-today").onclick = () => { CAL = { y: null, m: null }; loadCalendar(); };
+$("#cal-prev").onclick = () => { if (CAL_MODE === "week") { WEEK_OFF--; loadWeekView(); } else shiftMonth(-1); };
+$("#cal-next").onclick = () => { if (CAL_MODE === "week") { WEEK_OFF++; loadWeekView(); } else shiftMonth(1); };
+$("#cal-today").onclick = () => { if (CAL_MODE === "week") { WEEK_OFF = 0; loadWeekView(); } else { CAL = { y: null, m: null }; loadCalendar(); } };
 
 // ── 接入 ──
 let SLOTS = [];

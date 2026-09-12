@@ -3,5 +3,7 @@ uvicorn[standard]>=0.29
 requests>=2.31
 openai>=1.30
 httpx>=0.27
+python-multipart>=0.0.9
+pypdf>=4.0
 # 同步器(可选)
 playwright>=1.44

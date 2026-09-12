@@ -56,6 +56,7 @@
     <!-- 今日 -->
     <section id="tab-today" class="tab">
       <header class="page-head"><h1>今日 <span id="today-date" class="muted"></span></h1><span class="pill">已连续 <b id="streak">0</b> 天</span></header>
+      <div id="onboarding" class="card" hidden></div>
       <div id="ledger-card" class="card ledger-card"></div>
       <div id="pending-banner" class="banner" hidden></div>
       <div class="two-col">
@@ -68,7 +69,7 @@
           <ul id="today-list" class="tasks"></ul>
           <form id="quick-add" class="quick-add">
             <label>任务<input id="qa-title" placeholder="比如「复习线代第 2 章」" required></label>
-            <label>预计小时<input id="qa-hours" type="number" step="0.5" min="0.5" value="1"></label>
+            <label>预计小时(≤3)<input id="qa-hours" type="number" step="0.5" min="0.5" max="3" value="1"></label>
             <label>截止日<input id="qa-due" type="date"></label>
             <button class="primary">添加任务</button>
           </form>
@@ -121,11 +122,14 @@
     <!-- 日历 -->
     <section id="tab-calendar" class="tab" hidden>
       <header class="page-head">
-        <h1 id="cal-title">日历</h1>
-        <div class="row"><button id="cal-prev" class="ghost">‹ 上月</button><button id="cal-today" class="ghost">本月</button><button id="cal-next" class="ghost">下月 ›</button></div>
+        <h1 id="cal-title">本周</h1>
+        <div class="row"><button id="cal-mode" class="ghost">切到月历</button><button id="cal-prev" class="ghost">‹ 上一</button><button id="cal-today" class="ghost">本周</button><button id="cal-next" class="ghost">下一 ›</button></div>
       </header>
       <div id="cal-ledger" class="card ledger-card"></div>
-      <div class="card cal-wrap">
+      <div id="week-wrap" class="card">
+        <div id="week-grid" class="week-grid"></div>
+      </div>
+      <div id="month-wrap" class="card cal-wrap" hidden>
         <div class="cal-head"><span>周一</span><span>周二</span><span>周三</span><span>周四</span><span>周五</span><span>周六</span><span>周日</span></div>
         <div id="cal-grid" class="cal-grid"></div>
       </div>

@@ -215,3 +215,36 @@ class V11(unittest.TestCase):
         self.assertEqual((r["stats"]["done"], r["stats"]["streak"]), (1, 1)); self.assertTrue(r["review"]["ai_comment"])
         r = self.c.get("/api/review/daily").json(); self.assertEqual(r["review"]["mood"], "good"); self.assertEqual(r["stats"]["done_hours"], 2.0)
         r = self.c.post("/api/review/daily", json={"note": "改一下", "mood": "ok"}).json(); self.assertEqual(r["review"]["note"], "改一下")   # 同日覆盖
+
+
+class V12(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.c = TestClient(app)
+        assert cls.c.post("/api/register", json={"username": "kim", "password": "pass1234"}).status_code == 200
+
+    def test_invalid_date_rejected_and_today_survives(self):
+        self.assertEqual(self.c.post("/api/tasks", json={"title": "坏日期", "est_hours": 1, "due": "not-a-date"}).status_code, 422)
+        self.assertEqual(self.c.post("/api/goals", json={"title": "g", "due": "2026-13-45", "tasks": []}).status_code, 422)
+        a = self.c.post("/api/tasks", json={"title": "好日期", "est_hours": 1, "due": "2026-09-20T10:00:00"}).json()["id"]   # 带时间的会被截成日期
+        self.assertEqual(self.c.patch(f"/api/tasks/{a}", json={"scheduled_date": "xx"}).status_code, 422)
+        self.assertEqual(self.c.get("/api/today").status_code, 200)
+
+    def test_pre_semester_class_hours_zero(self):
+        self.c.post("/api/import/sample")
+        self.c.put("/api/settings", json={"semester_start": "2026-10-05"})   # 学期还没开始
+        w = self.c.get("/api/week").json(); self.assertIsNone(w["week_no"]); self.assertEqual(w["class_hours"], 0.0)
+        self.assertEqual(self.c.post("/api/settings/adopt_suggested").json()["weekly_hours"], 70.0)   # 开学前不扣课时
+        self.c.put("/api/settings", json={"semester_start": "2026-09-13"})
+        self.assertGreater(self.c.get("/api/week").json()["class_hours"], 0)
+
+    def test_tired_same_day_not_consecutive_and_group_settle_owner_only(self):
+        self.c.post("/api/tasks", json={"title": "x", "est_hours": 1, "due": "2026-09-16", "scheduled_date": "2026-09-16"})
+        for _ in range(3):
+            p = self.c.post("/api/review/too_tired/preview").json(); self.c.post("/api/review/too_tired/apply", json={"moves": p["moves"], "overflow": p["overflow"]})
+        self.assertIsNone(self.c.post("/api/review/too_tired/preview").json()["advice"])   # 同一天三次 ≠ 连续三天
+        g = self.c.post("/api/groups", json={"name": "结算组"}).json()
+        gg = self.c.post("/api/goals", json={"title": "共同", "due": "2026-10-01", "tasks": [], "group_id": g["id"]}).json()["goal_id"]
+        c2 = TestClient(app); c2.post("/api/register", json={"username": "lee", "password": "pass1234"}); c2.post("/api/groups/join", json={"code": g["invite_code"]})
+        self.assertEqual(c2.post(f"/api/goals/{gg}/settle", json={"action": "drop"}).status_code, 403)
+        self.assertEqual(self.c.post(f"/api/goals/{gg}/settle", json={"action": "extend", "new_due": "2026-10-10"}).status_code, 200)

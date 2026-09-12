@@ -160,9 +160,22 @@ def settings(s: Settings, u: dict = Depends(current_user)):
 
 # ── 目标与任务 ───────────────────────────────────────────────────────────
 
+from pydantic import field_validator
+
+
+def _valid_date(v):
+    if v in (None, ""):
+        return None
+    try:
+        return dt.date.fromisoformat(str(v)[:10]).isoformat()
+    except ValueError:
+        raise ValueError("日期格式须为 YYYY-MM-DD")
+
+
 class GoalIn(BaseModel):
     title: str
     due: str | None = None
+    _v_due = field_validator("due", mode="before")(classmethod(lambda cls, v: _valid_date(v)))
 
 
 class TaskIn(BaseModel):
@@ -173,6 +186,8 @@ class TaskIn(BaseModel):
     scheduled_date: str | None = None
     goal_id: int | None = None
     group_id: int | None = None
+    _v_due = field_validator("due", mode="before")(classmethod(lambda cls, v: _valid_date(v)))
+    _v_sd = field_validator("scheduled_date", mode="before")(classmethod(lambda cls, v: _valid_date(v)))
 
 
 class GoalCreate(GoalIn):
@@ -210,6 +225,8 @@ def settle_goal(gid: int, s: SettleIn, u: dict = Depends(current_user)):
     g = db.row("SELECT * FROM goals WHERE id=?", (gid,))
     if not g or (g["user_id"] != u["id"] and not (g["group_id"] and db.row("SELECT 1 FROM group_members WHERE group_id=? AND user_id=?", (g["group_id"], u["id"])))):
         raise HTTPException(404, "目标不存在")
+    if g["group_id"] and not db.row("SELECT 1 FROM groups WHERE id=? AND owner_id=?", (g["group_id"], u["id"])):
+        raise HTTPException(403, "共同目标的结算(达成/延期/放弃)只有组长能做")
     if s.action == "achieved":
         db.run("UPDATE goals SET status='achieved', settled_at=? WHERE id=?", (now(), gid))
         db.run("UPDATE tasks SET status='done', remaining_hours=0, done_at=COALESCE(done_at,?) WHERE goal_id=? AND status!='done'", (now(), gid))
@@ -459,6 +476,8 @@ class TaskPatch(BaseModel):
     due: str | None = None
     scheduled_date: str | None = None
     status: str | None = None
+    _v_due = field_validator("due", mode="before")(classmethod(lambda cls, v: _valid_date(v)))
+    _v_sd = field_validator("scheduled_date", mode="before")(classmethod(lambda cls, v: _valid_date(v)))
 
 
 def _own_task(tid: int, uid: int) -> dict:
@@ -758,10 +777,17 @@ def _replace_slots(uid: int, slots: list[SlotIn]) -> int:
     return len(slots)
 
 
+def _class_hours_week(u: dict, slots: list[dict], wk: int | None) -> float:
+    """本周课时。学期已设而教学周为空(开学前/学期外)→ 0,与页面「今天没课」同一口径。"""
+    if u.get("semester_start") and wk is None:
+        return 0.0
+    return rules.class_hours_for_week(slots, wk)
+
+
 def _adopt_suggested(u: dict) -> float:
-    """按课表推算本周可投入时长(基准 42 − 课时)并写入。"""
+    """按课表推算本周可投入时长(日承载力 × 7 − 课时)并写入。"""
     wk = rules.week_number(rules.d(u["semester_start"]), rules.week_bounds(today())[0])
-    h = rules.suggested_weekly_hours(rules.class_hours_for_week(_slots(u["id"]), wk))
+    h = rules.suggested_weekly_hours(_class_hours_week(u, _slots(u["id"]), wk))
     db.run("UPDATE users SET weekly_hours=? WHERE id=?", (h, u["id"]))
     return h
 
@@ -824,7 +850,7 @@ def week(date: str | None = None, u: dict = Depends(current_user)):
         days.append({"date": dd.isoformat(), "weekday": i + 1,
                      "slots": [] if (_semester_start(u) and wk is None) else [s for s in slots if s["day"] == i + 1 and (wk is None or not s["weeks"] or wk in s["weeks"])],
                      "tasks": [t for t in tasks if t["status"] != "done" and (t["scheduled_date"] == dd.isoformat() or (not t["scheduled_date"] and t["due"] == dd.isoformat()))]})
-    class_hours = rules.class_hours_for_week(slots, wk)
+    class_hours = _class_hours_week(u, slots, wk)
     return {"monday": mon.isoformat(), "sunday": sun.isoformat(), "week_no": wk, "days": days,
             "class_hours": class_hours, "suggested_weekly_hours": rules.suggested_weekly_hours(class_hours),
             "gap": rules.capacity_gap(tasks, u["weekly_hours"], day),
@@ -861,7 +887,7 @@ def month(year: int | None = None, month: int | None = None, u: dict = Depends(c
                      "overdue": [x for x in tasks if x["status"] == "confirmed" and x["due"] == ds and day < t]})
         day += dt.timedelta(days=1)
     wk_now = rules.week_number(_semester_start(u), rules.week_bounds(t)[0])
-    class_hours = rules.class_hours_for_week(slots, wk_now)
+    class_hours = _class_hours_week(u, slots, wk_now)
     return {"year": y, "month": m, "days": days, "today": t.isoformat(),
             "week": {"monday": rules.week_bounds(t)[0].isoformat(), "sunday": rules.week_bounds(t)[1].isoformat(),
                      "week_no": wk_now, "class_hours": class_hours,
@@ -886,6 +912,8 @@ def today_view(u: dict = Depends(current_user)):
     return {"date": t.isoformat(), "tasks": todays, "streak": rules.streak(_done_dates(u["id"]), t),
             "pending": [x for x in tasks if x["status"] == "pending"], "classes": classes, "week_no": wk,
             "daily_cap": rules.DAILY_CAP, "done_today": [x for x in tasks if x["status"] == "done" and (x["done_at"] or "")[:10] == t.isoformat()],
+            "goal_titles": {g["id"]: g["title"] for g in db.rows("SELECT id,title FROM goals WHERE user_id=? OR group_id IN (SELECT group_id FROM group_members WHERE user_id=?)", (u["id"], u["id"]))},
+            "onboarding": {"has_goal": bool(db.row("SELECT 1 FROM goals WHERE user_id=?", (u["id"],))), "has_schedule": bool(db.row("SELECT 1 FROM schedule_slots WHERE user_id=?", (u["id"],)))},
             "timeline": build_timeline(classes, todays)}
 
 
@@ -917,7 +945,7 @@ def too_tired_preview(u: dict = Depends(current_user)):
     t = today()
     plan = rules.too_tired_plan(_my_tasks(u["id"]), t, u["weekly_hours"] / 7)
     plan["sentence"] = llm.replan_sentence(plan)
-    n = db.row("SELECT COUNT(*) c FROM fatigue_events WHERE user_id=? AND date>=?", (u["id"], (t - dt.timedelta(days=2)).isoformat()))["c"]
+    n = db.row("SELECT COUNT(DISTINCT date) c FROM fatigue_events WHERE user_id=? AND date>=? AND date<?", (u["id"], (t - dt.timedelta(days=2)).isoformat(), t.isoformat()))["c"]
     plan["advice"] = ("连续三天太累了,要不要把目标截止日往后挪一挪?" if n >= 2 else
                       "连着两天太累了,建议把本周承载力下调两成。" if n == 1 else None)
     plan["advice_kind"] = "extend_due" if n >= 2 else ("reduce" if n == 1 else None)
@@ -933,8 +961,9 @@ class PlanIn(BaseModel):
 def too_tired_apply(p: PlanIn, u: dict = Depends(current_user)):
     t = today()
     todays = rules.today_tasks(_my_tasks(u["id"]), t)
-    db.run("INSERT INTO fatigue_events(user_id,date,remaining) VALUES(?,?,?)",
-           (u["id"], t.isoformat(), sum(float(x["remaining_hours"] or 0) for x in todays)))
+    if not db.row("SELECT 1 FROM fatigue_events WHERE user_id=? AND date=?", (u["id"], t.isoformat())):
+        db.run("INSERT INTO fatigue_events(user_id,date,remaining) VALUES(?,?,?)",
+               (u["id"], t.isoformat(), sum(float(x["remaining_hours"] or 0) for x in todays)))
     for m in p.moves:
         _own_task(int(m["id"]), u["id"])
         db.run("UPDATE tasks SET scheduled_date=? WHERE id=?", (m["to"], int(m["id"])))

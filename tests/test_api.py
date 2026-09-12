@@ -75,7 +75,7 @@ class Api(unittest.TestCase):
         self.assertEqual(self.c.get("/api/today").json()["tasks"], [])
         r = self.c.post(f"/api/review/{a}/done").json(); self.assertEqual(r["streak"], 1)
         r = self.c.post(f"/api/review/{b}/postpone").json(); self.assertTrue(r["scheduled_date"] > "2026-09-16")
-        p = self.c.post("/api/review/too_tired/preview").json(); self.assertIsNotNone(p["advice"])
+        p = self.c.post("/api/review/too_tired/preview").json(); self.assertIsNone(p["advice"])   # 同一天再点不算「连续两天」
 
     def test_04_pending_confirm_and_sync_token(self):
         self.assertEqual(self.c.post("/api/canvas/import").status_code, 400)  # 无令牌

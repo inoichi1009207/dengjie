@@ -32,7 +32,7 @@ def available() -> bool:
 
 def _chat_json(system: str, user: str) -> dict:
     from openai import OpenAI
-    client = OpenAI(base_url=_BASE, api_key=_KEY)
+    client = OpenAI(base_url=_BASE, api_key=_KEY, timeout=45, max_retries=1)
     r = client.chat.completions.create(
         model=_MODEL, temperature=0.2,
         response_format={"type": "json_object"},
@@ -67,7 +67,7 @@ def _keywords(title: str) -> list[str]:
     return out[:3]
 
 
-def enrich(title: str, timeout: float = 6.0) -> list[dict]:
+def enrich(title: str, timeout: float = 4.0) -> list[dict]:
     """联网查关键词(维基百科 REST 摘要,英文优先、中文兜底),返回 [{term, title, extract, url}]。查不到就空;网络错误不抛。"""
     import requests
     out = []
@@ -158,7 +158,7 @@ def discuss_goal(title: str, due: str | None, today: dt.date, history: list[dict
     if available():
         try:
             from openai import OpenAI
-            client = OpenAI(base_url=_BASE, api_key=_KEY)
+            client = OpenAI(base_url=_BASE, api_key=_KEY, timeout=45, max_retries=1)
             msgs = [{"role": "system", "content": _DISCUSS_SYS},
                     {"role": "user", "content": f"今天 {today.isoformat()};目标:{title};截止:{due or '未定'}"}]
             msgs += [{"role": m.get("role", "user"), "content": str(m.get("content", ""))[:4000]} for m in history[-10:]]
@@ -296,7 +296,7 @@ def tired_advice(reason: str, plan: dict, history: list[dict] | None = None) -> 
     if available():
         try:
             from openai import OpenAI
-            client = OpenAI(base_url=_BASE, api_key=_KEY)
+            client = OpenAI(base_url=_BASE, api_key=_KEY, timeout=45, max_retries=1)
             msgs = [{"role": "system", "content": _TIRED_SYS}, {"role": "user", "content": f"安排事实:{facts}"}]
             msgs += [{"role": m.get("role", "user"), "content": str(m.get("content", ""))[:1000]} for m in (history or [])[-6:]]
             msgs.append({"role": "user", "content": f"我太累了,原因:{reason}"})
