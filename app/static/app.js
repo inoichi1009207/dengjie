@@ -183,7 +183,7 @@ async function loadToday() {
 function updateBadge(n) { const b = $("#nav-pending"); b.hidden = !n; b.textContent = n; }
 function renderPending(ul, pending, refresh) {
   ul.innerHTML = "";
-  if (!pending.length) ul.append(el("li", { class: "empty" }, "暂无。去「接入」拉取 Canvas 作业、读取邮件,或一键导入。"));
+  if (!pending.length) ul.append(el("li", { class: "empty" }, "暂无。去「接入」拉取 Canvas 作业、读取邮件,或在「设置」载入演示数据。"));
   for (const t of pending) ul.append(taskLi(t, [
     el("button", { class: "small primary", onclick: async () => { await api(`/api/tasks/${t.id}/confirm`, "POST"); refresh(); } }, "计入"),
     el("button", { class: "small danger", onclick: async () => { await api(`/api/tasks/${t.id}`, "DELETE"); refresh(); } }, "忽略"),
@@ -249,7 +249,7 @@ function renderPreview() {
 }
 async function loadGrades() {
   const g = await api("/api/grades"); const box = $("#grades-card"); box.hidden = !g.count; if (!g.count) return;
-  box.innerHTML = ""; box.append(el("h2", {}, "成绩参考 ", el("span", { class: "muted" }, "来自一键导入的成绩,定目标时看一眼")));
+  box.innerHTML = ""; box.append(el("h2", {}, "成绩参考 ", el("span", { class: "muted" }, "来自导入的成绩,定目标时看一眼")));
   box.append(el("div", { class: "row" }, el("span", { class: "pill" }, `GPA ${g.gpa ?? "—"}(4.3 制)`), el("span", { class: "pill" }, `均分 ${g.avg ?? "—"}`), el("span", { class: "muted" }, `${g.count} 门`)));
   if (g.weakest.length) box.append(el("p", { class: "hint" }, "分数最低的三门:", g.weakest.map(r => `${r.course} ${r.score}`).join(" · "), " —— 想补强就从这里立目标。"));
   const tbl = el("table", { class: "grid" }, el("thead", {}, el("tr", {}, el("th", {}, "课程"), el("th", {}, "学分"), el("th", {}, "成绩"), el("th", {}, "学期"))));
