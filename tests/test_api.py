@@ -97,7 +97,7 @@ class Api(unittest.TestCase):
         self.assertEqual(len(d["members"]), 2); self.assertIsNone(d["invite_code"])  # 非组长看不到码
         tid = d["goals"][0]["tasks"][0]["id"]
         self.assertEqual(c2.post(f"/api/tasks/{tid}/claim").json()["user_id"], d["members"][1]["id"] if d["members"][1]["username"] == "bob" else d["members"][0]["id"])
-        self.assertEqual(self.c.post(f"/api/tasks/{tid}/claim").status_code, 400)  # 已被认领
+        self.assertEqual(self.c.post(f"/api/tasks/{tid}/claim").status_code, 409)  # 已被认领
         d = self.c.get(f"/api/groups/{g['id']}").json(); self.assertEqual(d["goals"][0]["tasks"][0]["assignee"], "bob")
 
     def test_06_auth_required(self):
