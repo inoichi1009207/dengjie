@@ -33,7 +33,7 @@ def _body_text(msg) -> str:
     if msg.is_multipart():
         for part in msg.walk():
             if part.get_content_type() == "text/plain" and not part.get("Content-Disposition"):
-                return part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", "ignore")
+                return (part.get_payload(decode=True) or b"").decode(part.get_content_charset() or "utf-8", "ignore")
         for part in msg.walk():
             if part.get_content_type() == "text/html":
                 html = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", "ignore")
@@ -46,7 +46,7 @@ def _body_text(msg) -> str:
 def fetch_recent(user: str, password: str, days: int = 7, limit: int = 30) -> list[dict]:
     """返回原始邮件(仅内存使用):[{uid, subject, date, from_domain, body}]"""
     since = (dt.date.today() - dt.timedelta(days=days)).strftime("%d-%b-%Y")
-    box = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
+    box = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT, timeout=15)
     try:
         box.login(user if "@" in user else f"{user}@sjtu.edu.cn", password)
         box.select("INBOX", readonly=True)
@@ -101,6 +101,8 @@ def send_mail(user: str, password: str, to: str, subject: str, body: str) -> str
         with smtplib.SMTP_SSL(SMTP_HOST, 465, timeout=20) as s:
             s.login(sender, password); s.sendmail(sender, [to], msg.as_string())
         return "465"
+    except smtplib.SMTPAuthenticationError:
+        raise   # 密码错就别再用 587 登第二次
     except Exception:
         with smtplib.SMTP(SMTP_HOST, 587, timeout=20) as s:
             s.starttls(); s.login(sender, password); s.sendmail(sender, [to], msg.as_string())

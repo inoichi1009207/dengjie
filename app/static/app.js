@@ -2,11 +2,18 @@
 const $ = (s) => document.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (k === "class") n.className = v; else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else if (v !== null && v !== undefined) n.setAttribute(k, v); } for (const c of kids) if (c !== null && c !== undefined && c !== "") n.append(c); return n; };
 async function api(path, method = "GET", body) {
-  const r = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+  let r;
+  try { r = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined }); }
+  catch (e) { toastSafe("网络不通:" + e.message, true); throw e; }
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.detail || r.statusText);
+  if (!r.ok) {
+    if (r.status === 401 && path !== "/api/me") { location.reload(); }
+    const msg = typeof j.detail === "string" ? j.detail : (Array.isArray(j.detail) ? j.detail.map(d => d.msg).join(";") : (r.status >= 500 ? "服务器出错了,请重试" : r.statusText));
+    toastSafe(msg, true); throw new Error(msg);
+  }
   return j;
 }
+function toastSafe(msg, warn) { try { toast(msg, warn); } catch { /* toast 未就绪 */ } }
 const SRC = { ai: "AI 拆解", manual: "手动", canvas: "Canvas", email: "邮件" };
 const fmtDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const todayStr = () => fmtDate(new Date());
@@ -50,6 +57,7 @@ async function loadDdl() {
     due.append(el("h2", {}, "到期的目标,结个账"));
     for (const g of d.due_goals) {
       const ni = el("input", { type: "date" });
+      if (g.can_settle === false) { due.append(el("div", { class: "row" }, el("span", { class: cdClass(g.days_left) }, daysLabel(g.days_left)), el("b", {}, g.title), el("span", { class: "muted" }, "共同目标,由组长结算"))); continue; }
       due.append(el("div", { class: "row" }, el("span", { class: cdClass(g.days_left) }, daysLabel(g.days_left)), el("b", {}, g.title), el("span", { class: "muted" }, `任务 ${g.tasks_done}/${g.tasks_total}`),
         el("button", { class: "small primary", onclick: async () => { await api(`/api/goals/${g.id}/settle`, "POST", { action: "achieved" }); loadDdl(); } }, "达成了"),
         ni, el("button", { class: "small", onclick: async () => { if (!ni.value) return alert("先选新截止日"); await api(`/api/goals/${g.id}/settle`, "POST", { action: "extend", new_due: ni.value }); loadDdl(); } }, "延期到"),
@@ -269,6 +277,7 @@ $("#g-discuss").onclick = async () => {
     // 把用户手改过的当前版本也带上,AI 在它之上改
     const hist = HISTORY.concat([{ role: "assistant", content: "当前版本:\n" + tasksAsText(PREVIEW) }]);
     const r = await api("/api/goals/discuss", "POST", { title: $("#g-title").value.trim(), due: $("#g-due").value || null, history: hist, feedback: fb });
+    if (r.error || !r.tasks.length) { $("#g-note").textContent = r.error || "模型没有返回内容,保留了你当前的版本"; return; }
     HISTORY = hist.concat([{ role: "user", content: fb }, { role: "assistant", content: tasksAsText(r.tasks) }]);
     PREVIEW = r.tasks; renderPreview(); $("#g-note").textContent = "AI:" + r.note; $("#g-feedback").value = "";
   } catch (e) { $("#g-note").textContent = e.message; } finally { $("#g-discuss").disabled = false; }
@@ -349,7 +358,7 @@ function showDay(d) {
   const box = $("#cal-day"); box.hidden = false; box.innerHTML = "";
   box.append(el("h2", {}, `${d.date} `, el("span", { class: "muted" }, d.week_no ? `第 ${d.week_no} 教学周` : "")));
   const st = el("div"); box.append(el("h3", {}, "负载条"), st);
-  renderStrip(st, d.classes || [], d.tasks, (ME && ME.weekly_hours ? ME.weekly_hours : 42) / 7);
+  renderStrip(st, d.classes || [], d.tasks, 10);
   if (d.classes.length) { const ul = el("ul", { class: "tasks" }); for (const s of d.classes) ul.append(classLi(s)); box.append(el("h3", { style: "margin-top:12px" }, "课"), ul); }
   const ul = el("ul", { class: "tasks" });
   if (!d.tasks.length) ul.append(el("li", { class: "empty" }, "这天没有任务。"));

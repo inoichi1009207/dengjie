@@ -19,7 +19,7 @@ def _load_key() -> str:
     k = os.environ.get("LLM_API_KEY") or os.environ.get("DEEPSEEK_API_KEY") or ""
     if not k and os.path.exists(_KEY_FILE):
         with open(_KEY_FILE, encoding="utf-8") as f:
-            k = f.read().strip().splitlines()[0].strip() if f else ""
+            k = (f.read().strip().splitlines() or [""])[0].strip()
     return k
 
 
@@ -169,7 +169,8 @@ def discuss_goal(title: str, due: str | None, today: dt.date, history: list[dict
             if tasks:
                 return {"note": str(out.get("note") or "已按你的意见调整。"), "tasks": tag_resources(tasks, catalog_match(title))}
         except Exception as e:
-            print("[llm] discuss failed:", e)
+            print("[llm] discuss failed:", type(e).__name__)
+            return {"note": "", "tasks": [], "error": "模型暂时不可用,保留了你当前的版本"}
     # 桩:认「合并/少一点」「拆细/多一点」两类意见
     base = _decompose_stub(title, due, today)
     if re.search(r"少|合并|精简|太多", feedback):

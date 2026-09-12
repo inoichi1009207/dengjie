@@ -22,9 +22,19 @@ db.init_db()
 COOKIE = "dj_session"
 
 
-def _demo_creds() -> dict:
+def _demo_allowed(u) -> bool:
+    """演示凭据只对白名单账号回落(DENGJIE_DEMO_USERS,逗号分隔;缺省 demo,12),别的注册用户拿不到团队邮箱/令牌。"""
+    if not u:
+        return False
+    allowed = {x.strip() for x in os.environ.get("DENGJIE_DEMO_USERS", "demo,12").split(",") if x.strip()}
+    return u.get("username") in allowed
+
+
+def _demo_creds(u=None) -> dict:
     """演示账号:环境变量优先;其次 DENGJIE_DEMO_CREDS 指向的文件(四行:Canvas 令牌 / 空 / 邮箱账号 / 密码)。
-    文件已 gitignore;值永不打印、永不进日志。"""
+    文件已 gitignore;值永不打印、永不进日志。只对白名单用户生效。"""
+    if u is not None and not _demo_allowed(u):
+        return {"canvas": "", "mail_user": "", "mail_pass": ""}
     out = {"canvas": os.environ.get("DEMO_CANVAS_TOKEN") or "", "mail_user": os.environ.get("DEMO_MAIL_USER") or "",
            "mail_pass": os.environ.get("DEMO_MAIL_PASS") or ""}
     p = os.environ.get("DENGJIE_DEMO_CREDS")
@@ -98,7 +108,7 @@ def register(c: Cred, resp: Response):
     salt = secrets.token_hex(8)
     uid = db.run("INSERT INTO users(username,pw_hash,salt,weekly_hours,semester_start,created) VALUES(?,?,?,?,?,?)",
                  (c.username, _hash(c.password, salt), salt, rules.WEEKLY_BASE_HOURS,
-                  os.environ.get("DEFAULT_SEMESTER_START", "2026-09-13"), now()))
+                  _safe_date(os.environ.get("DEFAULT_SEMESTER_START", "2026-09-13")) or "2026-09-13", now()))
     _issue_session(resp, uid)
     return {"ok": True, "user_id": uid}
 
@@ -122,9 +132,9 @@ def logout(request: Request, resp: Response):
 def _public_user(u: dict) -> dict:
     return {"id": u["id"], "username": u["username"], "weekly_hours": u["weekly_hours"],
             "semester_start": u["semester_start"],
-            "has_canvas_token": bool(u["canvas_token"] or _demo_creds()["canvas"]),
-            "has_mail": bool((u.get("mail_user") and u.get("mail_pass")) or (_demo_creds()["mail_user"] and _demo_creds()["mail_pass"])),
-            "mail_user": u.get("mail_user") or _demo_creds()["mail_user"],
+            "has_canvas_token": bool(u["canvas_token"] or _demo_creds(u)["canvas"]),
+            "has_mail": bool((u.get("mail_user") and u.get("mail_pass")) or (_demo_creds(u)["mail_user"] and _demo_creds(u)["mail_pass"])),
+            "mail_user": u.get("mail_user") or _demo_creds(u)["mail_user"],
             "remind_hour": u.get("remind_hour"), "last_remind": u.get("last_remind"),
             "llm": "deepseek" if llm.available() else "stub"}
 
@@ -145,7 +155,9 @@ class Settings(BaseModel):
 @app.put("/api/settings")
 def settings(s: Settings, u: dict = Depends(current_user)):
     if s.weekly_hours is not None:
-        db.run("UPDATE users SET weekly_hours=? WHERE id=?", (max(0.0, s.weekly_hours), u["id"]))
+        if not (0 <= s.weekly_hours <= 168):
+            raise HTTPException(400, "本周可投入须在 0-168 小时")
+        db.run("UPDATE users SET weekly_hours=? WHERE id=?", (float(s.weekly_hours), u["id"]))
     if s.semester_start is not None:
         dt.date.fromisoformat(s.semester_start)  # 任意日期都行,按所在周的周一起算
         db.run("UPDATE users SET semester_start=? WHERE id=?", (s.semester_start, u["id"]))
@@ -161,6 +173,13 @@ def settings(s: Settings, u: dict = Depends(current_user)):
 # ── 目标与任务 ───────────────────────────────────────────────────────────
 
 from pydantic import field_validator
+
+
+def _safe_date(v):
+    try:
+        return _valid_date(v)
+    except ValueError:
+        return None
 
 
 def _valid_date(v):
@@ -229,7 +248,7 @@ def settle_goal(gid: int, s: SettleIn, u: dict = Depends(current_user)):
         raise HTTPException(403, "共同目标的结算(达成/延期/放弃)只有组长能做")
     if s.action == "achieved":
         db.run("UPDATE goals SET status='achieved', settled_at=? WHERE id=?", (now(), gid))
-        db.run("UPDATE tasks SET status='done', remaining_hours=0, done_at=COALESCE(done_at,?) WHERE goal_id=? AND status!='done'", (now(), gid))
+        db.run("UPDATE tasks SET status='done', remaining_hours=0 WHERE goal_id=? AND status!='done'", (gid,))   # 不写 done_at:结算不算本周工时
     elif s.action == "extend":
         if not s.new_due:
             raise HTTPException(400, "延期要给新截止日")
@@ -330,7 +349,7 @@ def plan_auto(u: dict = Depends(current_user)):
         wk = rules.week_number(_semester_start(u), dd)
         cls = [] if (_semester_start(u) and wk is None) else [s for s in slots if s["day"] == dd.weekday() + 1 and (wk is None or not s["weeks"] or wk in s["weeks"])]
         cbd[dd.isoformat()] = rules.class_hours_for_week(cls, None)
-    plan = rules.plan_days(_my_tasks(u["id"]), t, u["weekly_hours"] / 7, 14, cbd)
+    plan = rules.plan_days(_my_tasks(u["id"]), t, rules.DAILY_CAP, 14, cbd)
     for tid, date in plan["assign"].items():
         db.run("UPDATE tasks SET scheduled_date=? WHERE id=? AND user_id=?", (date, tid, u["id"]))
     return {"planned": len(plan["assign"]), "overflow": plan["overflow"], "load": plan["load"]}
@@ -390,6 +409,7 @@ def ddl(u: dict = Depends(current_user)):
     goals = db.rows("SELECT g.* FROM goals g WHERE g.status='active' AND g.due IS NOT NULL AND (g.user_id=? OR g.group_id IN (SELECT group_id FROM group_members WHERE user_id=?)) ORDER BY g.due", (u["id"], u["id"]))
     for g in goals:
         ts = db.rows("SELECT status FROM tasks WHERE goal_id=?", (g["id"],))
+        g["can_settle"] = (not g["group_id"]) or bool(db.row("SELECT 1 FROM groups WHERE id=? AND owner_id=?", (g["group_id"], u["id"])))
         g["days_left"] = (rules.d(g["due"]) - t).days
         g["tasks_total"] = len(ts); g["tasks_done"] = sum(1 for x in ts if x["status"] == "done")
     tasks = [x for x in _my_tasks(u["id"]) if x["status"] == "confirmed" and x["due"]]
@@ -495,20 +515,26 @@ def _own_task(tid: int, uid: int) -> dict:
 @app.patch("/api/tasks/{tid}")
 def patch_task(tid: int, p: TaskPatch, u: dict = Depends(current_user)):
     _own_task(tid, u["id"])
-    for k, v in p.model_dump(exclude_none=True).items():
-        if k == "status" and v not in ("pending", "confirmed", "done"):
-            raise HTTPException(400, "status 非法")
+    fields = p.model_dump(exclude_none=True)
+    if fields.get("status") not in (None, "pending", "confirmed", "done"):
+        raise HTTPException(400, "status 非法")
+    for k, v in fields.items():
         if k in ("est_hours", "remaining_hours"):
             v = _clamp_hours(v)
         db.run(f"UPDATE tasks SET {k}=? WHERE id=?", (v, tid))
         if k == "est_hours":
             db.run("UPDATE tasks SET remaining_hours=MIN(remaining_hours,?) WHERE id=?", (v, tid))
+    if "due" in fields:  # 计划日不能晚于截止日
+        db.run("UPDATE tasks SET scheduled_date=? WHERE id=? AND scheduled_date IS NOT NULL AND scheduled_date>?", (fields["due"], tid, fields["due"]))
     return db.row("SELECT * FROM tasks WHERE id=?", (tid,))
 
 
 @app.delete("/api/tasks/{tid}")
 def delete_task(tid: int, u: dict = Depends(current_user)):
-    _own_task(tid, u["id"])
+    t = _own_task(tid, u["id"])
+    if t["status"] == "pending" and t["external_id"]:
+        db.run("UPDATE tasks SET status='ignored' WHERE id=?", (tid,))   # 忽略:留痕,下次拉取不再复活
+        return {"ok": True, "ignored": True}
     db.run("DELETE FROM tasks WHERE id=?", (tid,))
     return {"ok": True}
 
@@ -523,11 +549,13 @@ def confirm_task(tid: int, u: dict = Depends(current_user)):
 @app.post("/api/tasks/{tid}/claim")
 def claim_task(tid: int, u: dict = Depends(current_user)):
     t = db.row("SELECT * FROM tasks WHERE id=?", (tid,))
-    if not t or not t["group_id"] or t["user_id"] is not None:
-        raise HTTPException(400, "不可认领")
+    if not t or not t["group_id"]:
+        raise HTTPException(400, "不是小组任务")
     if not db.row("SELECT 1 FROM group_members WHERE group_id=? AND user_id=?", (t["group_id"], u["id"])):
         raise HTTPException(403, "不在该小组")
-    db.run("UPDATE tasks SET user_id=? WHERE id=?", (u["id"], tid))
+    n = db.run("UPDATE tasks SET user_id=? WHERE id=? AND user_id IS NULL AND status!='done'", (u["id"], tid))
+    if not n:
+        raise HTTPException(409, "已被别人认领")
     return db.row("SELECT * FROM tasks WHERE id=?", (tid,))
 
 
@@ -600,24 +628,29 @@ def import_bundle(b: BundleIn, u: dict = Depends(current_user)):
         raise HTTPException(400, f"JSON 不合法:{e.msg}")
     out = {"schedule": 0, "canvas_tasks": 0, "mail_tasks": 0, "skipped": 0}
     sched = obj.get("schedule") or []
-    if sched:
+    from pydantic import ValidationError
+    try:   # 先把三段全部校验完,再落库
         slots = [SlotIn(**{k: s.get(k) for k in ("name", "teacher", "location", "day", "slot_start", "slot_end", "weeks") if s.get(k) is not None}) for s in sched if s.get("name") and s.get("day")]
+        pre = []
+        for key, source in (("canvas_tasks", "canvas"), ("mail_tasks", "email")):
+            for it in obj.get(key) or []:
+                title = str(it.get("title") or "").strip()
+                if title:
+                    pre.append((key, source, it, TaskIn(title=title[:120], est_hours=float(it.get("est_hours") or 2), due=it.get("due") or None)))
+    except (ValidationError, ValueError, TypeError) as e:
+        raise HTTPException(400, f"JSON 里有一条不合法:{str(e)[:120]}")
+    if sched:
         out["schedule"] = _replace_slots(u["id"], slots)
         out["weekly_hours"] = _adopt_suggested(u)
     grades = obj.get("grades") or []
     if grades:
         out["grades"] = _import_grades(u["id"], grades)
-    for key, source in (("canvas_tasks", "canvas"), ("mail_tasks", "email")):
-        for it in obj.get(key) or []:
-            title = str(it.get("title") or "").strip()
-            if not title:
-                continue
-            ext = str(it.get("external_id") or f"{source}:{title[:40]}")
-            if db.row("SELECT 1 FROM tasks WHERE user_id=? AND external_id=?", (u["id"], ext)):
-                out["skipped"] += 1; continue
-            _insert_task(u["id"], TaskIn(title=title[:120], est_hours=float(it.get("est_hours") or 2), due=it.get("due") or None),
-                         source, status="pending", external_id=ext)
-            out[key] += 1
+    for key, source, it, tin in pre:
+        ext = str(it.get("external_id") or f"{source}:{tin.title[:40]}")
+        if db.row("SELECT 1 FROM tasks WHERE user_id=? AND external_id=?", (u["id"], ext)):
+            out["skipped"] += 1; continue
+        _insert_task(u["id"], tin, source, status="pending", external_id=ext)
+        out[key] += 1
     return out
 
 
@@ -681,8 +714,8 @@ def _compose_reminder(u: dict) -> tuple[str, str]:
 
 def _send_reminder(u: dict) -> dict:
     from . import mail as mail_api
-    user = u.get("mail_user") or _demo_creds()["mail_user"]
-    pw = u.get("mail_pass") or _demo_creds()["mail_pass"]
+    user = u.get("mail_user") or _demo_creds(u)["mail_user"]
+    pw = u.get("mail_pass") or _demo_creds(u)["mail_pass"]
     if not (user and pw):
         raise HTTPException(400, "没有邮箱账号:在「接入」页填入")
     to = user if "@" in user else f"{user}@sjtu.edu.cn"
@@ -719,6 +752,7 @@ def _remind_tick() -> int:
     for u in db.rows("SELECT * FROM users WHERE remind_hour IS NOT NULL"):
         if u["remind_hour"] != nowdt.hour or (u["last_remind"] or "")[:10] == nowdt.date().isoformat():
             continue
+        db.run("UPDATE users SET last_remind=? WHERE id=?", (nowdt.isoformat(timespec="seconds"), u["id"]))   # 失败也记,当天不再重试
         try:
             _send_reminder(u); sent += 1
         except Exception as e:
@@ -919,8 +953,16 @@ def today_view(u: dict = Depends(current_user)):
 
 @app.post("/api/review/{tid}/done")
 def review_done(tid: int, u: dict = Depends(current_user)):
-    _own_task(tid, u["id"])
-    db.run("UPDATE tasks SET status='done', remaining_hours=0, done_at=? WHERE id=?", (now(), tid))
+    t = _own_task(tid, u["id"])
+    if t["group_id"]:
+        owner = db.row("SELECT 1 FROM groups WHERE id=? AND owner_id=?", (t["group_id"], u["id"]))
+        if t["user_id"] is None:
+            raise HTTPException(400, "先认领再完成")
+        if t["user_id"] != u["id"] and not owner:
+            raise HTTPException(403, "只有认领人或组长能标记完成")
+    if t["status"] == "done":
+        return {"ok": True, "already": True, "streak": rules.streak(_done_dates(u["id"]), today())}
+    db.run("UPDATE tasks SET status='done', remaining_hours=0, done_at=? WHERE id=? AND status!='done'", (now(), tid))
     db.run("INSERT INTO progress_events(user_id,task_id,action,at) VALUES(?,?,?,?)", (u["id"], tid, "done", now()))
     return {"ok": True, "streak": rules.streak(_done_dates(u["id"]), today())}
 
@@ -966,10 +1008,17 @@ def too_tired_apply(p: PlanIn, u: dict = Depends(current_user)):
                (u["id"], t.isoformat(), sum(float(x["remaining_hours"] or 0) for x in todays)))
     for m in p.moves:
         _own_task(int(m["id"]), u["id"])
-        db.run("UPDATE tasks SET scheduled_date=? WHERE id=?", (m["to"], int(m["id"])))
-    for o in p.overflow:  # 本周放不下的:取消计划日,回到截止日那格等用户取舍
-        _own_task(int(o["id"]), u["id"])
-        db.run("UPDATE tasks SET scheduled_date=NULL WHERE id=?", (int(o["id"]),))
+        try:
+            to = _valid_date(m.get("to"))
+        except ValueError:
+            to = None
+        if not to:
+            raise HTTPException(400, "moves.to 日期非法")
+        db.run("UPDATE tasks SET scheduled_date=? WHERE id=?", (to, int(m["id"])))
+    nxt = (rules.week_bounds(t)[1] + dt.timedelta(days=1)).isoformat()
+    for o in p.overflow:  # 本周放不下的:有截止日的回到截止日那格;没有的放到下周一,仍可见
+        x = _own_task(int(o["id"]), u["id"])
+        db.run("UPDATE tasks SET scheduled_date=? WHERE id=?", (x["due"] if x["due"] else nxt, int(o["id"])))
     db.run("INSERT INTO progress_events(user_id,task_id,action,at) VALUES(?,?,?,?)", (u["id"], None, "too_tired", now()))
     return {"ok": True, "moved": len(p.moves)}
 
@@ -1023,7 +1072,7 @@ def daily_review_post(b: DailyReviewIn, u: dict = Depends(current_user)):
 @app.post("/api/settings/reduce_weekly")
 def reduce_weekly(u: dict = Depends(current_user)):
     """PRD 规则 4:连续太累 → 本周可投入下调两成。"""
-    h = round(u["weekly_hours"] * 0.8, 1)
+    h = round(max(7.0, u["weekly_hours"] * 0.8), 1)
     db.run("UPDATE users SET weekly_hours=? WHERE id=?", (h, u["id"]))
     return {"weekly_hours": h}
 
@@ -1031,7 +1080,7 @@ def reduce_weekly(u: dict = Depends(current_user)):
 @app.post("/api/settings/boost_weekly")
 def boost_weekly(u: dict = Depends(current_user)):
     """规则 4 的反向:今天全做完还有余力 → 本周可投入上调一成(承载力上修)。"""
-    h = round(u["weekly_hours"] * 1.1, 1)
+    h = round(min(168.0, u["weekly_hours"] * 1.1), 1)
     db.run("UPDATE users SET weekly_hours=? WHERE id=?", (h, u["id"]))
     db.run("INSERT INTO progress_events(user_id,task_id,action,at) VALUES(?,?,?,?)", (u["id"], None, "spare", now()))
     return {"weekly_hours": h}
@@ -1073,7 +1122,7 @@ def tasks_batch(b: BatchEst, u: dict = Depends(current_user)):
 
 @app.post("/api/canvas/import")
 def canvas_import(u: dict = Depends(current_user)):
-    token = u["canvas_token"] or _demo_creds()["canvas"]
+    token = u["canvas_token"] or _demo_creds(u)["canvas"]
     if not token:
         raise HTTPException(400, "没有 Canvas 令牌:在设置里填入,或由操作员配置演示令牌")
     try:
@@ -1096,8 +1145,8 @@ def canvas_import(u: dict = Depends(current_user)):
 @app.post("/api/mail/import")
 def mail_import(u: dict = Depends(current_user)):
     from . import mail as mail_api
-    user = u.get("mail_user") or _demo_creds()["mail_user"]
-    pw = u.get("mail_pass") or _demo_creds()["mail_pass"]
+    user = u.get("mail_user") or _demo_creds(u)["mail_user"]
+    pw = u.get("mail_pass") or _demo_creds(u)["mail_pass"]
     if not (user and pw):
         raise HTTPException(400, "没有邮箱账号:在「接入」页填入(演示账号)")
     try:
@@ -1122,9 +1171,9 @@ def mail_import(u: dict = Depends(current_user)):
 @app.get("/api/integrations/status")
 def integrations_status(u: dict = Depends(current_user)):
     cnt = lambda src: db.row("SELECT COUNT(*) c FROM tasks WHERE user_id=? AND source=?", (u["id"], src))["c"]
-    return {"schedule_slots": len(_slots(u["id"])), "canvas": {"configured": bool(u["canvas_token"] or _demo_creds()["canvas"]), "tasks": cnt("canvas")},
-            "mail": {"configured": bool((u.get("mail_user") and u.get("mail_pass")) or (_demo_creds()["mail_user"] and _demo_creds()["mail_pass"])),
-                     "user": u.get("mail_user") or _demo_creds()["mail_user"], "tasks": cnt("email")},
+    return {"schedule_slots": len(_slots(u["id"])), "canvas": {"configured": bool(u["canvas_token"] or _demo_creds(u)["canvas"]), "tasks": cnt("canvas")},
+            "mail": {"configured": bool((u.get("mail_user") and u.get("mail_pass")) or (_demo_creds(u)["mail_user"] and _demo_creds(u)["mail_pass"])),
+                     "user": u.get("mail_user") or _demo_creds(u)["mail_user"], "tasks": cnt("email")},
             "llm": "deepseek" if llm.available() else "stub"}
 
 

@@ -248,3 +248,34 @@ class V12(unittest.TestCase):
         c2 = TestClient(app); c2.post("/api/register", json={"username": "lee", "password": "pass1234"}); c2.post("/api/groups/join", json={"code": g["invite_code"]})
         self.assertEqual(c2.post(f"/api/goals/{gg}/settle", json={"action": "drop"}).status_code, 403)
         self.assertEqual(self.c.post(f"/api/goals/{gg}/settle", json={"action": "extend", "new_due": "2026-10-10"}).status_code, 200)
+
+
+class V13(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.c = TestClient(app)
+        assert cls.c.post("/api/register", json={"username": "mia", "password": "pass1234"}).status_code == 200
+
+    def test_ignore_marks_and_done_idempotent_and_due_clamps_schedule(self):
+        self.c.post("/api/import/sample")
+        pend = self.c.get("/api/tasks?status=pending").json(); pid = pend[0]["id"]
+        self.assertTrue(self.c.delete(f"/api/tasks/{pid}").json().get("ignored"))
+        self.assertEqual(self.c.post("/api/import/sample").json()["skipped"], 6)          # 忽略过的不复活
+        self.assertNotIn(pid, [t["id"] for t in self.c.get("/api/tasks?status=pending").json()])
+        a = self.c.post("/api/tasks", json={"title": "a", "est_hours": 2, "due": "2026-09-20"}).json()["id"]
+        r = self.c.patch(f"/api/tasks/{a}", json={"due": "2026-09-18"}).json(); self.assertEqual(r["scheduled_date"], "2026-09-18")
+        self.c.post(f"/api/review/{a}/done"); r = self.c.post(f"/api/review/{a}/done").json(); self.assertTrue(r.get("already"))
+        self.assertEqual(self.c.get("/api/week").json()["gap"]["done_hours"], 2.0)
+        self.assertEqual(self.c.put("/api/settings", json={"weekly_hours": 999}).status_code, 400)
+        self.assertEqual(self.c.post("/api/review/too_tired/apply", json={"moves": [{"id": a, "to": "bad"}], "overflow": []}).status_code, 400)
+
+    def test_group_claim_atomic_and_done_rules(self):
+        g = self.c.post("/api/groups", json={"name": "规则组"}).json()
+        c2 = TestClient(app); c2.post("/api/register", json={"username": "ned", "password": "pass1234"}); c2.post("/api/groups/join", json={"code": g["invite_code"]})
+        tid = self.c.post("/api/tasks", json={"title": "t", "est_hours": 1, "group_id": g["id"]}).json()["id"]
+        self.assertEqual(c2.post(f"/api/review/{tid}/done").status_code, 400)        # 未认领不能完成
+        self.assertEqual(c2.post(f"/api/tasks/{tid}/claim").status_code, 200)
+        self.assertEqual(self.c.post(f"/api/tasks/{tid}/claim").status_code, 409)     # 已被认领
+        self.assertEqual(self.c.patch(f"/api/tasks/{tid}", json={"title": "t2"}).status_code, 200)   # 内容全员可改
+        self.assertEqual(self.c.post(f"/api/review/{tid}/done").status_code, 200)     # 组长可完成
+        d = c2.get("/api/ddl").json(); self.assertTrue(all("can_settle" in x for x in d["upcoming_goals"] + d["due_goals"]))
