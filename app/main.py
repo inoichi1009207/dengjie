@@ -1272,7 +1272,16 @@ def group_detail(gid: int, u: dict = Depends(current_user)):
 
 @app.get("/")
 def index():
-    return FileResponse(os.path.join(STATIC, "index.html"))
+    return FileResponse(os.path.join(STATIC, "index.html"), headers={"Cache-Control": "no-cache"})
+
+
+@app.middleware("http")
+async def _no_cache_static(request: Request, call_next):
+    """静态文件每次回源校验:曾因浏览器缓存旧 app.js 配新 index.html 导致整页脚本崩掉。"""
+    resp = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        resp.headers["Cache-Control"] = "no-cache"
+    return resp
 
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")

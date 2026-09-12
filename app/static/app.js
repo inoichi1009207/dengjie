@@ -161,7 +161,7 @@ async function loadToday() {
     } }, "太累了"),
     (() => { const di = el("input", { type: "date", style: "width:140px" }); return el("span", { class: "row", style: "margin:0;gap:4px" }, el("button", { class: "small warn", onclick: async () => { if (!di.value) { di.focus(); return; } await api(`/api/tasks/${t.id}`, "PATCH", { scheduled_date: di.value }); toast(`「${t.title}」推迟到 ${di.value}`, di.value > (t.due || "9999")); loadToday(); } }, "推迟到"), di); })(),
   ]));
-  const cap = d.daily_cap || 10; $("#daily-cap").textContent = cap.toFixed(0);
+  const cap = d.daily_cap || 10;
   const doneList = d.done_today || [];
   renderStrip($("#today-strip"), d.classes || [], [...d.tasks, ...doneList], cap);
   const up = $("#today-upcoming"); up.innerHTML = "";
