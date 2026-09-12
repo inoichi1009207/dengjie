@@ -98,19 +98,52 @@ def enrich(title: str, timeout: float = 6.0) -> list[dict]:
     return out
 
 
+_CATALOG_PATH = os.path.join(os.path.dirname(__file__), "resources.json")
+
+
+def catalog_match(title: str) -> list[dict]:
+    """预置资源目录:目标标题命中关键词的条目。"""
+    try:
+        with open(_CATALOG_PATH, encoding="utf-8") as f:
+            items = json.load(f).get("items") or []
+    except OSError:
+        return []
+    low = title.lower()
+    return [it for it in items if any(k.lower() in low for k in it.get("keywords", []))][:4]
+
+
+def tag_resources(tasks: list[dict], catalog: list[dict]) -> list[dict]:
+    """资源只认目录:命中目录条目 → 换成目录标题并附 url;其余保留原文但标「未核验」。"""
+    titles = {it["title"]: it for it in catalog}
+    for t in tasks:
+        r = (t.get("resource") or "").strip()
+        if not r:
+            t["resource_verified"] = None
+            continue
+        hit = next((it for it in catalog if it["title"] == r or r.lower() in it["title"].lower() or any(k.lower() in r.lower() for k in it["keywords"])), None)
+        if hit:
+            t["resource"] = hit["title"]; t["resource_url"] = hit["url"]; t["resource_verified"] = True
+        else:
+            t["resource"] = r + "(未核验)" if "(未核验)" not in r else r; t["resource_verified"] = False
+    return tasks
+
+
 def decompose_goal(title: str, due: str | None, today: dt.date, context: list[dict] | None = None) -> list[dict]:
+    catalog = catalog_match(title)
     if available():
         try:
             ctx = ""
             if context:
                 ctx = "\n参考资料(联网查到,可据此把任务写具体,如按章节/单元拆):\n" + "\n".join(f"- {c['title']}:{c['extract'][:400]}" for c in context)
+            if catalog:
+                ctx += "\n可选资源目录(resource 字段优先从这里选,原样照抄标题):\n" + "\n".join(f"- {it['title']}" for it in catalog)
             out = _chat_json(_DECOMPOSE_SYS, f"今天 {today.isoformat()};目标:{title};截止:{due or '未定'}{ctx}")
             tasks = out.get("tasks") or []
             if tasks:
-                return [_norm_task(t) for t in tasks][:12]
+                return tag_resources([_norm_task(t) for t in tasks][:12], catalog)
         except Exception as e:  # 模型挂了退回桩,不让按钮死掉
             print("[llm] decompose failed:", e)
-    return _decompose_stub(title, due, today)
+    return tag_resources(_decompose_stub(title, due, today), catalog)
 
 
 _DISCUSS_SYS = _DECOMPOSE_SYS + (
@@ -134,7 +167,7 @@ def discuss_goal(title: str, due: str | None, today: dt.date, history: list[dict
             out = json.loads(r.choices[0].message.content or "{}")
             tasks = [_norm_task(t) for t in (out.get("tasks") or [])][:12]
             if tasks:
-                return {"note": str(out.get("note") or "已按你的意见调整。"), "tasks": tasks}
+                return {"note": str(out.get("note") or "已按你的意见调整。"), "tasks": tag_resources(tasks, catalog_match(title))}
         except Exception as e:
             print("[llm] discuss failed:", e)
     # 桩:认「合并/少一点」「拆细/多一点」两类意见

@@ -48,6 +48,9 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN mail_pass TEXT",
     "ALTER TABLE goals ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",   # active | achieved | dropped
     "ALTER TABLE goals ADD COLUMN settled_at TEXT",
+    "ALTER TABLE users ADD COLUMN remind_hour INTEGER",
+    "ALTER TABLE users ADD COLUMN last_remind TEXT",
+    "CREATE TABLE IF NOT EXISTS grades(id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, course TEXT NOT NULL, credit REAL, score REAL, term TEXT, UNIQUE(user_id, course, term))",
 ]
 
 

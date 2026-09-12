@@ -76,7 +76,7 @@ function ledgerCard(box, w) {
       el("div", { class: "bar" }, el("i", { style: `width:${pct}%` }))),
     el("div", { class: "facts" },
       el("div", {}, "本周已排", el("b", {}, `${g.committed_hours} h`), el("button", { class: "small ghost", title: "按截止日与每天容量把任务摊到各天", onclick: async () => { const r = await api("/api/plan/auto", "POST"); alert(`已排 ${r.planned} 件任务到各天${r.overflow.length ? `;${r.overflow.length} 件截止前排不下:${r.overflow.map(o => o.title).join("、")}` : ""}`); location.hash = ""; switchTab(document.querySelector("#nav button.active").dataset.tab); } }, "自动排程")),
-      el("div", {}, "本周承载力(可投入)", el("b", {}, `${g.weekly_hours} h`), el("span", {}, `日均 ${(g.weekly_hours / 7).toFixed(1)} h${w.class_hours != null ? " · 课时 " + w.class_hours + " h" : ""}`)),
+      el("div", {}, "本周承载力(可投入)", el("b", {}, `${g.weekly_hours} h`), el("span", {}, `日均 ${(g.weekly_hours / 7).toFixed(1)} h${w.class_hours != null ? " · 课时 " + w.class_hours + " h" : ""} `), el("button", { class: "small ghost", title: "每天 8 小时 × 7 − 本周课时", onclick: async () => { const r = await api("/api/settings/adopt_suggested", "POST"); toast(`已按课表重算:本周承载力 ${r.weekly_hours} 小时`); switchTab(document.querySelector("#nav button.active").dataset.tab); } }, "按课表重算")),
       el("div", {}, "教学周", el("b", {}, w.week_no ? `第 ${w.week_no} 周` : (ME && ME.semester_start ? "开学前" : "未设")))));
 }
 
@@ -90,17 +90,18 @@ function toast(msg, warn) { const t = $("#toast"); t.textContent = msg; t.classN
 const fmtH = (h) => { const hh = Math.floor(h), mm = Math.round((h - hh) * 60); return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`; };
 // 负载条:每件事按小时占一块,不引入时刻。cap = 日承载力,超出部分照样画,只是标红提示。
 function renderStrip(box, classes, tasks, cap) {
+  // 承载力已经扣过课时,所以课单独占一段、不算进承载力;空余/超出只按任务对承载力算
   box.innerHTML = "";
-  const items = [...classes.map(s => ({ kind: "class", title: s.name, hours: Math.max(0.25, ((s.slot_end || s.slot_start || 1) - (s.slot_start || 1) + 1) * 0.75), color: colorOfClass(s) })),
-                 ...tasks.map(t => ({ kind: t.status === "done" ? "done" : "task", title: t.title, hours: Math.max(0.25, +(t.status === "done" ? t.est_hours : t.remaining_hours) || 0.5), color: colorOf(t) }))];
-  const used = items.reduce((a, b) => a + b.hours, 0), total = Math.max(cap || 0, used, 1);
+  const clsItems = classes.map(s => ({ kind: "class", title: s.name, hours: Math.max(0.25, ((s.slot_end || s.slot_start || 1) - (s.slot_start || 1) + 1) * 0.75), color: colorOfClass(s) }));
+  const tkItems = tasks.map(t => ({ kind: t.status === "done" ? "done" : "task", title: t.title, hours: Math.max(0.25, +(t.status === "done" ? t.est_hours : t.remaining_hours) || 0.5), color: colorOf(t) }));
+  const cls = clsItems.reduce((a, b) => a + b.hours, 0), tk = tkItems.reduce((a, b) => a + b.hours, 0);
+  const budget = Math.max(cap || 0, tk), total = Math.max(cls + budget, 1);
   const bar = el("div", { class: "strip" });
-  for (const it of items) bar.append(el("div", { class: `seg ${it.kind}`, style: `width:${it.hours / total * 100}%;--tc:${it.color}`, title: `${it.title} · ${it.hours}h` }, it.title));
-  if (used < total) bar.append(el("div", { class: "free" }, `空余 ${(total - used).toFixed(1)}h`));
+  for (const it of [...clsItems, ...tkItems]) bar.append(el("div", { class: `seg ${it.kind}`, style: `width:${it.hours / total * 100}%;--tc:${it.color}`, title: `${it.title} · ${it.hours}h` }, it.title));
+  if (tk < budget) bar.append(el("div", { class: "free" }, `空余 ${(budget - tk).toFixed(1)}h`));
   box.append(bar);
-  const cls = items.filter(i => i.kind === "class").reduce((a, b) => a + b.hours, 0), tk = items.filter(i => i.kind !== "class").reduce((a, b) => a + b.hours, 0);
-  const over = cap && used > cap;
-  box.append(el("div", { class: "strip-meta", style: over ? "color:var(--red)" : "" }, `课 ${cls.toFixed(1)}h · 任务 ${tk.toFixed(1)}h · 日承载力 ${(cap || 0).toFixed(1)}h${over ? " · 超出 " + (used - cap).toFixed(1) + "h" : ""}`));
+  const over = cap && tk > cap;
+  box.append(el("div", { class: "strip-meta", style: over ? "color:var(--red)" : "" }, `课 ${cls.toFixed(1)}h(不占承载力) · 任务 ${tk.toFixed(1)}h / 日承载力 ${(cap || 0).toFixed(1)}h${over ? " · 超出 " + (tk - cap).toFixed(1) + "h" : " · 空余 " + (cap - tk).toFixed(1) + "h"}`));
   const legend = el("div", { class: "strip-legend" });
   const seen = new Set();
   for (const t of tasks) { const k = t.goal_id ? `目标 ${t.goal_id}` : (SRC[t.source] || t.source); if (seen.has(k)) continue; seen.add(k); legend.append(el("span", { style: `--tc:${colorOf(t)}` }, el("i"), k)); }
@@ -193,7 +194,9 @@ $("#too-tired").onclick = async () => {
   for (const o of p.overflow) ul.append(el("li", {}, el("div", { class: "t" }, o.title, el("span", { class: "tag overdue" }, "本周放不下,回到截止日等你取舍"))));
   if (!p.moves.length && !p.overflow.length) ul.append(el("li", { class: "empty" }, "今天和明天本来就没什么安排。"));
   box.append(ul);
-  if (p.advice) box.append(el("p", { class: "hint" }, p.advice, " ", el("button", { class: "small", onclick: async () => { const r = await api("/api/settings/reduce_weekly", "POST"); alert(`本周可投入已调为 ${r.weekly_hours} 小时`); loadToday(); } }, "采用")));
+  if (p.advice) box.append(el("p", { class: "hint" }, p.advice, " ", p.advice_kind === "extend_due"
+    ? el("button", { class: "small", onclick: () => switchTab("ddl") }, "去 DDL 调截止日")
+    : el("button", { class: "small", onclick: async () => { const r = await api("/api/settings/reduce_weekly", "POST"); toast(`本周承载力已调为 ${r.weekly_hours} 小时`); loadToday(); } }, "采用,下调两成")));
   box.append(el("div", { class: "row" }, el("button", { class: "primary", onclick: async () => { await api("/api/review/too_tired/apply", "POST", { moves: p.moves, overflow: p.overflow }); loadToday(); } }, "就这么办"), el("button", { onclick: () => box.hidden = true }, "算了,保持原样")));
 };
 
@@ -205,9 +208,17 @@ function renderPreview() {
     el("td", {}, el("input", { value: t.title, oninput: e => t.title = e.target.value })),
     el("td", {}, el("input", { type: "number", step: "0.5", value: t.est_hours, oninput: e => t.est_hours = +e.target.value })),
     el("td", {}, el("input", { type: "date", value: t.due || "", oninput: e => t.due = e.target.value || null })),
-    el("td", {}, el("input", { value: t.resource || "", oninput: e => t.resource = e.target.value || null })),
+    el("td", {}, el("input", { value: t.resource || "", oninput: e => t.resource = e.target.value || null }), t.resource_verified === true ? el("span", { class: "tag canvas", title: t.resource_url || "" }, "目录内") : t.resource_verified === false ? el("span", { class: "tag manual" }, "未核验") : ""),
     el("td", {}, el("button", { class: "small link", onclick: () => { PREVIEW.splice(i, 1); renderPreview(); } }, "删")))));
   $("#g-preview").hidden = false;
+}
+async function loadGrades() {
+  const g = await api("/api/grades"); const box = $("#grades-card"); box.hidden = !g.count; if (!g.count) return;
+  box.innerHTML = ""; box.append(el("h2", {}, "成绩参考 ", el("span", { class: "muted" }, "来自一键导入的成绩,定目标时看一眼")));
+  box.append(el("div", { class: "row" }, el("span", { class: "pill" }, `GPA ${g.gpa ?? "—"}(4.3 制)`), el("span", { class: "pill" }, `均分 ${g.avg ?? "—"}`), el("span", { class: "muted" }, `${g.count} 门`)));
+  if (g.weakest.length) box.append(el("p", { class: "hint" }, "分数最低的三门:", g.weakest.map(r => `${r.course} ${r.score}`).join(" · "), " —— 想补强就从这里立目标。"));
+  const tbl = el("table", { class: "grid" }, el("thead", {}, el("tr", {}, el("th", {}, "课程"), el("th", {}, "学分"), el("th", {}, "成绩"), el("th", {}, "学期"))));
+  const tb = el("tbody"); for (const r of g.grades) tb.append(el("tr", {}, el("td", {}, r.course), el("td", {}, r.credit ?? ""), el("td", {}, r.score ?? ""), el("td", {}, r.term || ""))); tbl.append(tb); box.append(tbl);
 }
 let HISTORY = [];   // 与 AI 的讨论记录,前端持有
 const tasksAsText = (ts) => ts.map((t, i) => `${i + 1}. ${t.title}(${t.est_hours}h,截止 ${t.due || "未定"})`).join("\n");
@@ -239,6 +250,7 @@ $("#g-confirm").onclick = async () => {
   PREVIEW = []; HISTORY = []; $("#g-preview").hidden = true; $("#g-title").value = ""; $("#g-msg").textContent = ""; loadGoals();
 };
 async function loadGoals() {
+  loadGrades().catch(() => {});
   const gs = await api("/api/goals"); const box = $("#goal-list"); box.innerHTML = "";
   if (!gs.length) box.append(el("div", { class: "card" }, el("p", { class: "muted" }, "还没有目标。上面立一个试试。")));
   for (const g of gs) {
@@ -408,8 +420,8 @@ $("#grp-join").onclick = async () => { try { const r = await api("/api/groups/jo
 async function loadGroup(id) {
   const g = await api(`/api/groups/${id}`); const box = $("#grp-detail"); box.hidden = false; box.innerHTML = "";
   const head = el("div", { class: "card" }, el("h2", {}, g.name, g.invite_code ? el("span", { class: "muted" }, ` · 邀请码 ${g.invite_code}`) : ""));
-  const tbl = el("table", { class: "grid" }, el("thead", {}, el("tr", {}, el("th", {}, "成员"), el("th", {}, "认领"), el("th", {}, "完成"), el("th", {}, "完成率(只算共同目标)"), el("th", {}, "完成时长"), el("th", {}, "连续天数"))));
-  const tb = el("tbody"); for (const m of g.members) tb.append(el("tr", {}, el("td", {}, m.username), el("td", {}, String(m.claimed)), el("td", {}, String(m.done)), el("td", {}, `${Math.round(m.completion_rate * 100)}%`), el("td", {}, `${m.hours_done}h`), el("td", {}, String(m.streak)))); tbl.append(tb); head.append(tbl);
+  const tbl = el("table", { class: "grid" }, el("thead", {}, el("tr", {}, el("th", {}, "排名"), el("th", {}, "成员"), el("th", {}, "认领"), el("th", {}, "完成"), el("th", {}, "完成率(只算小组任务)"), el("th", {}, "完成时长"), el("th", {}, "连续天数"))));
+  const tb = el("tbody"); for (const m of g.members) tb.append(el("tr", {}, el("td", { class: "num" }, m.rank === 1 ? "🥇" : m.rank === 2 ? "🥈" : m.rank === 3 ? "🥉" : String(m.rank)), el("td", {}, m.username + (m.id === ME.id ? "(我)" : "")), el("td", {}, String(m.claimed)), el("td", {}, String(m.done)), el("td", {}, `${Math.round(m.completion_rate * 100)}%`), el("td", {}, `${m.hours_done}h`), el("td", {}, String(m.streak)))); tbl.append(tb); head.append(tbl);
   const ti = el("input", { class: "grow", placeholder: "共同目标,例:共读《线性代数应该这样学》前四章" }), di = el("input", { type: "date" });
   head.append(el("h3", { style: "margin-top:14px" }, "共同目标"), el("div", { class: "row" }, ti, di, el("button", { class: "primary", onclick: async () => {
     if (!ti.value.trim()) return; const r = await api("/api/goals/decompose", "POST", { title: ti.value.trim(), due: di.value || null });
@@ -448,7 +460,16 @@ async function loadGroup(id) {
 async function loadSettings() {
   ME = await api("/api/me");
   $("#s-hours").value = ME.weekly_hours; $("#s-start").value = ME.semester_start || ""; $("#s-llm").textContent = ME.llm === "deepseek" ? "DeepSeek 已连接" : "未配置(示例模式)";
+  const sel = $("#r-hour"); if (sel.options.length <= 1) for (let h = 6; h <= 23; h++) sel.append(el("option", { value: h }, `${String(h).padStart(2, "0")}:00`));
+  sel.value = ME.remind_hour == null ? "" : String(ME.remind_hour);
+  $("#r-last").textContent = ME.last_remind ? `上次发送:${ME.last_remind.replace("T", " ")}` : "还没发过。";
+  $("#acct-name").textContent = ME.username;
 }
+$("#s-adopt").onclick = async () => { const r = await api("/api/settings/adopt_suggested", "POST"); $("#s-hours").value = r.weekly_hours; $("#s-msg").textContent = `已按课表重算:${r.weekly_hours} 小时`; };
+$("#r-save").onclick = async () => { const v = $("#r-hour").value; await api("/api/remind", "PUT", { hour: v === "" ? null : +v }); $("#r-msg").textContent = v === "" ? "已关闭提醒" : `每天 ${String(v).padStart(2, "0")}:00 发送`; };
+$("#r-send").onclick = async () => { $("#r-msg").textContent = "发送中…"; try { const r = await api("/api/remind/send_now", "POST"); $("#r-msg").textContent = `已发到 ${r.to}(${r.sent_at.replace("T", " ")})`; $("#r-last").textContent = `上次发送:${r.sent_at.replace("T", " ")}`; } catch (e) { $("#r-msg").textContent = e.message; } };
+$("#pw-save").onclick = async () => { try { await api("/api/account/password", "POST", { old_password: $("#pw-old").value, new_password: $("#pw-new").value }); $("#pw-msg").textContent = "密码已修改,其他设备已下线"; $("#pw-old").value = $("#pw-new").value = ""; } catch (e) { $("#pw-msg").textContent = e.message; } };
+$("#acct-logout").onclick = async () => { await api("/api/logout", "POST"); location.reload(); };
 $("#s-save").onclick = async () => {
   try { await api("/api/settings", "PUT", { weekly_hours: +$("#s-hours").value, semester_start: $("#s-start").value || null }); $("#s-msg").textContent = "已保存"; }
   catch (e) { $("#s-msg").textContent = e.message; }

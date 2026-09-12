@@ -125,6 +125,7 @@ def _public_user(u: dict) -> dict:
             "has_canvas_token": bool(u["canvas_token"] or _demo_creds()["canvas"]),
             "has_mail": bool((u.get("mail_user") and u.get("mail_pass")) or (_demo_creds()["mail_user"] and _demo_creds()["mail_pass"])),
             "mail_user": u.get("mail_user") or _demo_creds()["mail_user"],
+            "remind_hour": u.get("remind_hour"), "last_remind": u.get("last_remind"),
             "llm": "deepseek" if llm.available() else "stub"}
 
 
@@ -566,6 +567,9 @@ def import_bundle(b: BundleIn, u: dict = Depends(current_user)):
         slots = [SlotIn(**{k: s.get(k) for k in ("name", "teacher", "location", "day", "slot_start", "slot_end", "weeks") if s.get(k) is not None}) for s in sched if s.get("name") and s.get("day")]
         out["schedule"] = _replace_slots(u["id"], slots)
         out["weekly_hours"] = _adopt_suggested(u)
+    grades = obj.get("grades") or []
+    if grades:
+        out["grades"] = _import_grades(u["id"], grades)
     for key, source in (("canvas_tasks", "canvas"), ("mail_tasks", "email")):
         for it in obj.get(key) or []:
             title = str(it.get("title") or "").strip()
@@ -578,6 +582,147 @@ def import_bundle(b: BundleIn, u: dict = Depends(current_user)):
                          source, status="pending", external_id=ext)
             out[key] += 1
     return out
+
+
+def _import_grades(uid: int, items: list[dict]) -> int:
+    n = 0
+    for g in items:
+        course = str(g.get("course") or "").strip()
+        if not course:
+            continue
+        try:
+            score = float(g.get("score")) if g.get("score") not in (None, "") else None
+            credit = float(g.get("credit")) if g.get("credit") not in (None, "") else None
+        except (TypeError, ValueError):
+            continue
+        db.run("INSERT INTO grades(user_id,course,credit,score,term) VALUES(?,?,?,?,?) ON CONFLICT(user_id,course,term) DO UPDATE SET credit=excluded.credit, score=excluded.score",
+               (uid, course[:80], credit, score, str(g.get("term") or "")[:20]))
+        n += 1
+    return n
+
+
+def _gpa_point(score: float) -> float:
+    """交大 4.3 制绩点换算(常用口径;以教务公布为准)。"""
+    for lo, p in ((95, 4.3), (90, 4.0), (85, 3.7), (80, 3.3), (75, 3.0), (70, 2.7), (67, 2.3), (65, 2.0), (62, 1.7), (60, 1.0)):
+        if score >= lo:
+            return p
+    return 0.0
+
+
+@app.get("/api/grades")
+def grades_view(u: dict = Depends(current_user)):
+    rows = db.rows("SELECT course,credit,score,term FROM grades WHERE user_id=? ORDER BY term DESC, course", (u["id"],))
+    scored = [r for r in rows if r["score"] is not None]
+    wsum = sum((r["credit"] or 1) for r in scored)
+    gpa = round(sum(_gpa_point(r["score"]) * (r["credit"] or 1) for r in scored) / wsum, 2) if wsum else None
+    avg = round(sum(r["score"] for r in scored) / len(scored), 1) if scored else None
+    weak = sorted(scored, key=lambda r: r["score"])[:3]
+    return {"count": len(rows), "gpa": gpa, "avg": avg, "grades": rows, "weakest": weak}
+
+
+class GradesIn(BaseModel):
+    grades: list[dict]
+
+
+@app.post("/api/grades")
+def grades_import(g: GradesIn, u: dict = Depends(current_user)):
+    return {"imported": _import_grades(u["id"], g.grades)}
+
+
+# ── 每日提醒邮件 ────────────────────────────────────────────────────────
+
+def _compose_reminder(u: dict) -> tuple[str, str]:
+    t = today()
+    tasks = rules.today_tasks(_my_tasks(u["id"]), t)
+    gap = rules.capacity_gap(_my_tasks(u["id"]), u["weekly_hours"], t)
+    lines = [f"登阶 · {t.isoformat()} 今日清单", ""]
+    lines += [f"- {x['title']}(预计 {x['remaining_hours']}h{',截止 ' + x['due'] if x['due'] else ''})" for x in tasks] or ["- 今天没有安排"]
+    lines += ["", f"本周已排 {gap['committed_hours']}h / 承载力 {gap['weekly_hours']}h;" + (f"排多了 {gap['gap']}h,记得取舍" if gap["gap"] > 0 else f"还有 {-gap['gap']}h 空余"),
+              "", "打开登阶处理:完成 / 太累了 / 推迟。"]
+    return f"[登阶] {t.isoformat()} 今日清单({len(tasks)} 件)", "\n".join(lines)
+
+
+def _send_reminder(u: dict) -> dict:
+    from . import mail as mail_api
+    user = u.get("mail_user") or _demo_creds()["mail_user"]
+    pw = u.get("mail_pass") or _demo_creds()["mail_pass"]
+    if not (user and pw):
+        raise HTTPException(400, "没有邮箱账号:在「接入」页填入")
+    to = user if "@" in user else f"{user}@sjtu.edu.cn"
+    subject, body = _compose_reminder(u)
+    try:
+        port = mail_api.send_mail(user, pw, to, subject, body)
+    except Exception as e:
+        raise HTTPException(502, f"发信失败:{type(e).__name__}")
+    db.run("UPDATE users SET last_remind=? WHERE id=?", (now(), u["id"]))
+    db.run("INSERT INTO progress_events(user_id,task_id,action,at) VALUES(?,?,?,?)", (u["id"], None, "remind_sent", now()))
+    return {"ok": True, "to": to, "port": port, "sent_at": now(), "subject": subject}
+
+
+@app.post("/api/remind/send_now")
+def remind_send_now(u: dict = Depends(current_user)):
+    return _send_reminder(u)
+
+
+class RemindIn(BaseModel):
+    hour: int | None = None   # 0-23;None = 关闭
+
+
+@app.put("/api/remind")
+def remind_set(r: RemindIn, u: dict = Depends(current_user)):
+    if r.hour is not None and not (0 <= r.hour <= 23):
+        raise HTTPException(400, "小时须在 0–23")
+    db.run("UPDATE users SET remind_hour=? WHERE id=?", (r.hour, u["id"]))
+    return {"remind_hour": r.hour}
+
+
+def _remind_tick() -> int:
+    """定时线程每分钟调一次:到点且今天没发过的用户,发一封。返回发送数。"""
+    nowdt = _dtnow(); sent = 0
+    for u in db.rows("SELECT * FROM users WHERE remind_hour IS NOT NULL"):
+        if u["remind_hour"] != nowdt.hour or (u["last_remind"] or "")[:10] == nowdt.date().isoformat():
+            continue
+        try:
+            _send_reminder(u); sent += 1
+        except Exception as e:
+            print("[remind] failed for user", u["id"], type(e).__name__)
+    return sent
+
+
+def _start_remind_thread():
+    import threading, time as _time
+    if os.environ.get("DENGJIE_NO_REMIND_THREAD") == "1":
+        return
+    def loop():
+        while True:
+            try:
+                _remind_tick()
+            except Exception as e:
+                print("[remind] tick error", type(e).__name__)
+            _time.sleep(60)
+    threading.Thread(target=loop, daemon=True, name="dengjie-remind").start()
+
+
+_start_remind_thread()
+
+
+# ── 账号 ────────────────────────────────────────────────────────────────
+
+class PasswordIn(BaseModel):
+    old_password: str
+    new_password: str
+
+
+@app.post("/api/account/password")
+def change_password(p: PasswordIn, request: Request, u: dict = Depends(current_user)):
+    if _hash(p.old_password, u["salt"]) != u["pw_hash"]:
+        raise HTTPException(401, "原密码不对")
+    if len(p.new_password) < 4:
+        raise HTTPException(400, "新密码至少 4 位")
+    salt = secrets.token_hex(8)
+    db.run("UPDATE users SET pw_hash=?, salt=? WHERE id=?", (_hash(p.new_password, salt), salt, u["id"]))
+    db.run("DELETE FROM sessions WHERE user_id=? AND token!=?", (u["id"], request.cookies.get(COOKIE) or ""))  # 踢掉其他设备
+    return {"ok": True}
 
 
 @app.get("/api/prompt", response_class=PlainTextResponse)
@@ -755,7 +900,8 @@ def too_tired_preview(u: dict = Depends(current_user)):
     plan["sentence"] = llm.replan_sentence(plan)
     n = db.row("SELECT COUNT(*) c FROM fatigue_events WHERE user_id=? AND date>=?", (u["id"], (t - dt.timedelta(days=2)).isoformat()))["c"]
     plan["advice"] = ("连续三天太累了,要不要把目标截止日往后挪一挪?" if n >= 2 else
-                      "连着两天太累了,建议把本周可投入时长下调两成。" if n == 1 else None)
+                      "连着两天太累了,建议把本周承载力下调两成。" if n == 1 else None)
+    plan["advice_kind"] = "extend_due" if n >= 2 else ("reduce" if n == 1 else None)
     return plan
 
 
@@ -946,6 +1092,9 @@ def group_detail(gid: int, u: dict = Depends(current_user)):
         done = sum(1 for x in gl["tasks"] if x["status"] == "done")
         gl["progress"] = round(done / len(gl["tasks"]), 2) if gl["tasks"] else 0.0
         gl["days_left"] = (rules.d(gl["due"]) - t).days if gl["due"] else None
+    members.sort(key=lambda m: (-m["completion_rate"], -m["hours_done"], -m["done"], m["username"]))   # 组内排行
+    for i, m in enumerate(members, 1):
+        m["rank"] = i
     group_tasks_free = [x for x in group_tasks if not x["goal_id"]]
     for x in group_tasks_free:
         x["assignee"] = names.get(x["user_id"])

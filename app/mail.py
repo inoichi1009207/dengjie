@@ -86,6 +86,27 @@ def clean(mail: dict, max_chars: int = 1200) -> dict:
             "date": mail.get("date") or "", "from_domain": mail.get("from_domain") or "", "excerpt": body}
 
 
+SMTP_HOST = os.environ.get("MAIL_SMTP_HOST", "smtp.sjtu.edu.cn")
+
+
+def send_mail(user: str, password: str, to: str, subject: str, body: str) -> str:
+    """交大 SMTP 发信(SSL 465,失败退 587 STARTTLS)。返回用的端口,失败抛异常。"""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.utils import formataddr
+    sender = user if "@" in user else f"{user}@sjtu.edu.cn"
+    msg = MIMEText(body, "plain", "utf-8")
+    msg["Subject"], msg["From"], msg["To"] = subject, formataddr(("登阶", sender)), to
+    try:
+        with smtplib.SMTP_SSL(SMTP_HOST, 465, timeout=20) as s:
+            s.login(sender, password); s.sendmail(sender, [to], msg.as_string())
+        return "465"
+    except Exception:
+        with smtplib.SMTP(SMTP_HOST, 587, timeout=20) as s:
+            s.starttls(); s.login(sender, password); s.sendmail(sender, [to], msg.as_string())
+        return "587"
+
+
 _KEYWORDS = re.compile(r"作业|报告|提交|截止|DDL|deadline|考试|测验|实验|签到|选课|答辩|论文|评审|问卷|申请", re.I)
 _DATE = re.compile(r"(?:(\d{4})[年./-])?(\d{1,2})[月./-](\d{1,2})(?:日|号)?")
 

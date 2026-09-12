@@ -101,6 +101,7 @@
           <div class="row"><button id="g-add-row" class="ghost">加一行</button><button id="g-confirm" class="primary">确认,进入任务清单</button></div>
         </div>
       </div>
+      <div id="grades-card" class="card" hidden></div>
       <div id="goal-list"></div>
     </section>
 
@@ -145,7 +146,7 @@
       <div class="int-grid">
         <div class="card">
           <h2>课表 <span id="int-sched-status" class="status"></span></h2>
-          <p class="hint">导入课表:教学信息网导出的 PDF、课表截图(png/jpg)、Markdown 或文本文件都行,AI 会自己读。也可以把课表文字直接粘贴到下面。保存后本周可投入时长按「42 小时 − 课时」自动更新。</p>
+          <p class="hint">导入课表:教学信息网导出的 PDF、课表截图(png/jpg)、Markdown 或文本文件都行,AI 会自己读;也可以把课表文字直接粘贴到下面;习惯用工具的同学可以跑 <code>tools/dengjie_sync.py</code> 一键脚本,或把提示词交给自己的 AI 助手(见上方一键导入)。保存后本周承载力按「每天 8 小时 × 7 − 课时」自动更新。</p>
           <div class="row"><input id="sch-file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.md,.txt,.csv,image/*,application/pdf,text/plain,text/markdown"><span id="sch-file-msg" class="hint"></span></div>
           <textarea id="sch-text" rows="6" placeholder="或粘贴课表文字"></textarea>
           <div class="row"><button id="sch-parse" class="primary">解析</button><span id="sch-msg" class="hint"></span></div>
@@ -205,13 +206,30 @@
     <!-- 设置 -->
     <section id="tab-settings" class="tab" hidden>
       <header class="page-head"><h1>设置</h1></header>
-      <div class="card narrow">
-        <label>本周可投入时长(小时) <input id="s-hours" type="number" min="0" step="0.5"></label>
-        <p class="hint">保存课表后会自动按「42 − 课时」更新;你也可以手动改。</p>
-        <label>学期开始日 <input id="s-start" type="date"></label>
-        <p class="hint">用于算教学周,默认 2026-09-13。</p>
-        <div class="row"><button id="s-save" class="primary">保存</button><span id="s-msg" class="hint"></span></div>
-        <p class="hint">AI 通道:<span id="s-llm"></span></p>
+      <div class="int-grid">
+        <div class="card">
+          <h2>承载力与学期</h2>
+          <label>本周承载力 / 可投入时长(小时) <input id="s-hours" type="number" min="0" step="0.5"></label>
+          <p class="hint">保存课表后自动按「每天 8 小时 × 7 − 课时」算;也可以手动改,或 <button id="s-adopt" class="link">按课表重算</button></p>
+          <label>学期开始日 <input id="s-start" type="date"></label>
+          <p class="hint">用于算教学周,默认 2026-09-13。</p>
+          <div class="row"><button id="s-save" class="primary">保存</button><span id="s-msg" class="hint"></span></div>
+          <p class="hint">AI 通道:<span id="s-llm"></span></p>
+        </div>
+        <div class="card">
+          <h2>每日提醒邮件</h2>
+          <p class="hint">每天定时把今日清单和本周时间账发到你的交大邮箱(用「接入」页配置的邮箱账号发给自己)。</p>
+          <label>提醒时间 <select id="r-hour"><option value="">关闭</option></select></label>
+          <div class="row"><button id="r-save" class="primary">保存</button><button id="r-send">现在发一封</button><span id="r-msg" class="hint"></span></div>
+          <p class="hint" id="r-last"></p>
+        </div>
+        <div class="card">
+          <h2>账号</h2>
+          <p class="hint">当前账号:<b id="acct-name"></b></p>
+          <label>原密码 <input id="pw-old" type="password" autocomplete="current-password"></label>
+          <label>新密码 <input id="pw-new" type="password" autocomplete="new-password" placeholder="至少 4 位"></label>
+          <div class="row"><button id="pw-save" class="primary">修改密码</button><button id="acct-logout">退出登录</button><span id="pw-msg" class="hint"></span></div>
+        </div>
       </div>
     </section>
   </main>

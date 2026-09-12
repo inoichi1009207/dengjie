@@ -11,7 +11,7 @@ import datetime as dt
 from typing import Iterable
 
 SLOT_HOURS = 0.75          # 一节课 45 分钟
-WEEKLY_BASE_HOURS = 42.0   # 建议可投入时长的基准(每天 6 小时)
+WEEKLY_BASE_HOURS = 56.0   # 承载力基准:每天 8 小时可用于课业(含上课),× 7;减去课时即可投入任务的时长
 TIRED_FACTOR = 0.6
 
 

@@ -37,20 +37,20 @@ class Api(unittest.TestCase):
         r = self.c.post("/api/schedule/parse", json={"text": text}).json()
         self.assertEqual(len(r["slots"]), 2); self.assertEqual(r["slots"][1]["weeks"][:2], [2, 4])
         r = self.c.put("/api/schedule", json={"slots": r["slots"]}).json()
-        self.assertEqual(r["count"], 2); self.assertEqual(r["weekly_hours"], 39.0)   # 保存课表即自动采用 42 − 课时
+        self.assertEqual(r["count"], 2); self.assertEqual(r["weekly_hours"], 53.0)   # 保存课表即自动采用 56 − 课时
         w = self.c.get("/api/week").json()
         self.assertEqual(w["class_hours"], 3.0)                # 第 2 教学周两门课各 2 节
-        self.assertEqual(w["gap"]["weekly_hours"], 39.0)
+        self.assertEqual(w["gap"]["weekly_hours"], 53.0)
         m = self.c.get("/api/month?year=2026&month=9").json()
         self.assertEqual(m["days"][0]["date"], "2026-08-31"); self.assertEqual(m["days"][-1]["date"], "2026-10-04")
         wed = next(d for d in m["days"] if d["date"] == "2026-09-16")
         self.assertTrue(wed["is_today"]); self.assertEqual(wed["class_slots"], 2)
-        self.assertEqual(m["week"]["gap"]["weekly_hours"], 39.0)
+        self.assertEqual(m["week"]["gap"]["weekly_hours"], 53.0)
 
     def test_02b_semester_any_day_and_defaults(self):
         c = TestClient(app); c.post("/api/register", json={"username": "carol", "password": "pass1234"})
         me = c.get("/api/me").json()
-        self.assertEqual(me["weekly_hours"], 42.0); self.assertEqual(me["semester_start"], "2026-09-13")
+        self.assertEqual(me["weekly_hours"], 56.0); self.assertEqual(me["semester_start"], "2026-09-13")
         self.assertEqual(c.get("/api/week").json()["week_no"], 1)      # 9.13 周日起算 → 9.14 那周是第 1 周
         self.assertEqual(c.put("/api/settings", json={"semester_start": "2026-09-13"}).status_code, 200)
         gid = self.c.get("/api/goals").json()[0]["id"]

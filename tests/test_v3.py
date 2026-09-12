@@ -29,7 +29,7 @@ class V3(unittest.TestCase):
                '"canvas_tasks":[{"external_id":"canvas:assignment:1","title":"[线代] 作业1","due":"2026-09-20","est_hours":2}],' \
                '"mail_tasks":[{"external_id":"mail:9","title":"提交实验报告","due":"2026-09-25","est_hours":1}]}\n完'
         r = self.c.post("/api/import/bundle", json={"text": text}).json()
-        self.assertEqual((r["schedule"], r["canvas_tasks"], r["mail_tasks"]), (1, 1, 1)); self.assertEqual(r["weekly_hours"], 40.5)
+        self.assertEqual((r["schedule"], r["canvas_tasks"], r["mail_tasks"]), (1, 1, 1)); self.assertEqual(r["weekly_hours"], 54.5)
         r = self.c.post("/api/import/bundle", json={"text": text}).json(); self.assertEqual(r["skipped"], 2)
         pend = self.c.get("/api/tasks?status=pending").json(); self.assertEqual({t["source"] for t in pend}, {"canvas", "email"})
         self.assertEqual(self.c.post("/api/import/bundle", json={"text": "没有json"}).status_code, 400)
@@ -56,7 +56,7 @@ class V3(unittest.TestCase):
         self.assertEqual(self.c.post(f"/api/goals/{gid2}/settle", json={"action": "nope"}).status_code, 400)
 
     def test_06_demo_seed_reset_and_delete_goal(self):
-        r = self.c.post("/api/demo/seed").json(); self.assertTrue(r["ok"]); self.assertLess(r["weekly_hours"], 42)
+        r = self.c.post("/api/demo/seed").json(); self.assertTrue(r["ok"]); self.assertLess(r["weekly_hours"], 56)
         st = self.c.get("/api/integrations/status").json(); self.assertEqual(st["schedule_slots"], 12)
         t = self.c.get("/api/today").json(); self.assertGreaterEqual(len(t["pending"]), 4); self.assertTrue(t["classes"])  # 09-16 周三有课
         gid = r["goal_id"]
@@ -120,6 +120,27 @@ class V3(unittest.TestCase):
         r = self.c.patch(f"/api/tasks/{tid}", json={"title": "订周三自习室", "est_hours": 1.5, "due": "2026-09-18"}).json()
         self.assertEqual((r["title"], r["est_hours"], r["due"]), ("订周三自习室", 1.5, "2026-09-18"))
         self.assertEqual(self.c.post("/api/tasks", json={"title": "x", "group_id": 99999}).status_code, 403)
+
+    def test_12_grades_remind_password_catalog_rank(self):
+        r = self.c.post("/api/import/sample").json(); self.assertEqual(r.get("grades"), 5)
+        g = self.c.get("/api/grades").json(); self.assertEqual(g["count"], 5); self.assertTrue(3.0 < g["gpa"] < 4.3); self.assertEqual(g["weakest"][0]["course"], "大学物理")
+        self.assertEqual(self.c.post("/api/grades", json={"grades": [{"course": "大学物理", "credit": 4, "score": 80, "term": "2025-2026-1"}]}).json()["imported"], 1)
+        self.assertEqual(self.c.get("/api/grades").json()["count"], 5)   # 同课同学期覆盖不重复
+        self.assertEqual(self.c.post("/api/remind/send_now").status_code, 400)   # 无邮箱账号
+        self.assertEqual(self.c.put("/api/remind", json={"hour": 21}).json()["remind_hour"], 21)
+        self.assertEqual(self.c.put("/api/remind", json={"hour": 25}).status_code, 400)
+        self.assertEqual(self.c.get("/api/me").json()["remind_hour"], 21)
+        self.assertEqual(self.c.post("/api/account/password", json={"old_password": "wrong", "new_password": "newpass1"}).status_code, 401)
+        self.assertEqual(self.c.post("/api/account/password", json={"old_password": "pass1234", "new_password": "newpass1"}).status_code, 200)
+        c2 = TestClient(app); self.assertEqual(c2.post("/api/login", json={"username": "dora", "password": "newpass1"}).status_code, 200)
+        self.assertEqual(c2.post("/api/login", json={"username": "dora", "password": "pass1234"}).status_code, 401)
+        from app import llm
+        cat = llm.catalog_match("期中前刷完 MIT 18.01 前四单元"); self.assertTrue(any("18.01" in c["title"] for c in cat))
+        tagged = llm.tag_resources([{"title": "a", "resource": "MIT 18.01SC", "est_hours": 1, "due": None}, {"title": "b", "resource": "某网盘链接", "est_hours": 1, "due": None}, {"title": "c", "resource": None}], cat)
+        self.assertTrue(tagged[0]["resource_verified"]); self.assertIn("ocw.mit.edu", tagged[0]["resource_url"])
+        self.assertFalse(tagged[1]["resource_verified"]); self.assertIn("未核验", tagged[1]["resource"]); self.assertIsNone(tagged[2]["resource_verified"])
+        gr = self.c.post("/api/groups", json={"name": "排行组"}).json(); d = self.c.get(f"/api/groups/{gr['id']}").json()
+        self.assertEqual(d["members"][0]["rank"], 1)
 
     def test_08_keywords(self):
         from app import llm

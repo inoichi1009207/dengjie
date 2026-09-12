@@ -1,0 +1,25 @@
+{
+  "_note": "预置资源目录(PRD 功能 1):拆解时模型只能从这里选资源;目录外的建议一律标「未核验」。keywords 命中目标标题即纳入候选。",
+  "items": [
+    {"keywords": ["18.01", "单变量微积分", "微积分"], "title": "MIT 18.01SC Single Variable Calculus(OCW)", "url": "https://ocw.mit.edu/courses/18-01sc-single-variable-calculus-fall-2010/"},
+    {"keywords": ["18.02", "多变量微积分"], "title": "MIT 18.02SC Multivariable Calculus(OCW)", "url": "https://ocw.mit.edu/courses/18-02sc-multivariable-calculus-fall-2010/"},
+    {"keywords": ["18.06", "线性代数", "Linear Algebra"], "title": "MIT 18.06 Linear Algebra(Strang,OCW)", "url": "https://ocw.mit.edu/courses/18-06-linear-algebra-spring-2010/"},
+    {"keywords": ["线性代数应该这样学", "Axler", "LADR"], "title": "Axler《Linear Algebra Done Right》第 4 版(作者官网免费 PDF)", "url": "https://linear.axler.net/"},
+    {"keywords": ["Analysis I", "Tao", "陶哲轩"], "title": "Terence Tao《Analysis I》(Hindustan Book Agency / Springer)", "url": "https://terrytao.wordpress.com/books/analysis-i/"},
+    {"keywords": ["18.100", "实分析", "数学分析"], "title": "MIT 18.100A Real Analysis(OCW)", "url": "https://ocw.mit.edu/courses/18-100a-real-analysis-fall-2020/"},
+    {"keywords": ["Lebl", "Basic Analysis"], "title": "Lebl《Basic Analysis》(免费)", "url": "https://www.jirka.org/ra/"},
+    {"keywords": ["CS61A", "61A", "SICP", "程序设计"], "title": "UC Berkeley CS61A Structure and Interpretation of Computer Programs", "url": "https://cs61a.org/"},
+    {"keywords": ["CS50"], "title": "Harvard CS50x", "url": "https://cs50.harvard.edu/x/"},
+    {"keywords": ["6.006", "算法"], "title": "MIT 6.006 Introduction to Algorithms(OCW)", "url": "https://ocw.mit.edu/courses/6-006-introduction-to-algorithms-spring-2020/"},
+    {"keywords": ["8.01", "大学物理", "力学", "Yale PHYS 200", "Shankar"], "title": "Yale PHYS 200 Fundamentals of Physics I(Shankar,Open Yale Courses)", "url": "https://oyc.yale.edu/physics/phys-200"},
+    {"keywords": ["8.02", "电磁学"], "title": "MIT 8.02 Physics II: Electricity and Magnetism(OCW)", "url": "https://ocw.mit.edu/courses/8-02-physics-ii-electricity-and-magnetism-spring-2019/"},
+    {"keywords": ["四级", "CET-4", "CET4"], "title": "大学英语四级官方样题与词表(教育部考试中心)", "url": "https://cet.neea.edu.cn/"},
+    {"keywords": ["六级", "CET-6", "CET6"], "title": "大学英语六级官方样题(教育部考试中心)", "url": "https://cet.neea.edu.cn/"},
+    {"keywords": ["托福", "TOEFL"], "title": "ETS TOEFL 官方备考资源", "url": "https://www.ets.org/toefl"},
+    {"keywords": ["雅思", "IELTS"], "title": "IELTS 官方备考资源", "url": "https://ielts.org/"},
+    {"keywords": ["Python"], "title": "Python 官方教程(中文)", "url": "https://docs.python.org/zh-cn/3/tutorial/"},
+    {"keywords": ["C语言", "C 语言", "C++"], "title": "cppreference 参考", "url": "https://zh.cppreference.com/"},
+    {"keywords": ["概率", "统计", "6.041", "Blitzstein"], "title": "Harvard Stat 110 Probability(Blitzstein)", "url": "https://projects.iq.harvard.edu/stat110"},
+    {"keywords": ["离散数学", "6.042"], "title": "MIT 6.042J Mathematics for Computer Science(OCW)", "url": "https://ocw.mit.edu/courses/6-042j-mathematics-for-computer-science-fall-2010/"}
+  ]
+}
