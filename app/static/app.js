@@ -27,14 +27,7 @@ const colorOfClass = (s) => { const h = CLASS_HINT.find(([k]) => s.name.includes
 const goalColor = (gid) => PAL[gid % PAL.length];
 
 // ── 登录 / 壳 ──
-async function boot() {
-  // 无论是否已登录,打开永远先看封面;已登录只多一个「继续」按钮
-  $("#landing").hidden = false;
-  try { ME = await api("/api/me"); const card = document.querySelector(".auth-card");
-    const cont = el("button", { class: "primary block", onclick: () => showApp() }, `以 ${ME.username} 身份继续 →`);
-    card.insertBefore(cont, card.querySelector("label")); $("#auth-title").textContent = "欢迎回来";
-  } catch { ME = null; }
-}
+async function boot() { try { ME = await api("/api/me"); showApp(); } catch { ME = null; $("#landing").hidden = false; } }
 async function auth(path) {
   try { await api(path, "POST", { username: $("#au").value.trim(), password: $("#ap").value }); ME = await api("/api/me"); showApp(); }
   catch (e) { $("#auth-msg").textContent = e.message; }
@@ -42,7 +35,8 @@ async function auth(path) {
 $("#login").onclick = () => auth("/api/login");
 $("#register").onclick = () => auth("/api/register");
 $("#logout").onclick = async () => { await api("/api/logout", "POST"); location.reload(); };
-function showApp() { $("#landing").hidden = true; $("#app").hidden = false; $("#who").textContent = ME.username; switchTab("today"); }
+function showApp() { $("#landing").hidden = true; $("#app").hidden = false; $("#who").textContent = ME.username; $("#who2").textContent = ME.username; switchTab("today"); }
+$("#logout2").onclick = async () => { await api("/api/logout", "POST"); location.reload(); };
 document.querySelectorAll("#nav button[data-tab]").forEach(b => b.onclick = () => switchTab(b.dataset.tab));
 function switchTab(t) {
   document.querySelectorAll(".tab").forEach(s => s.hidden = true); $(`#tab-${t}`).hidden = false;
@@ -523,6 +517,9 @@ async function loadGroup(id) {
       t.assignee && t.status !== "done" && t.user_id === ME.id ? el("button", { class: "small", onclick: async () => { await api(`/api/review/${t.id}/done`, "POST"); loadGroup(id); } }, "完成") : "",
       t.status !== "done" ? editBtn(t, () => loadGroup(id)) : ""]));
     c.append(ul);
+    if (gl.status === "active" && gl.tasks.some(t => !t.assignee)) {
+      c.append(el("div", { class: "row" }, el("button", { class: "small primary", onclick: async () => { const r = await api(`/api/goals/${gl.id}/claim_all`, "POST"); toast(`已认领 ${r.claimed} 件`); loadGroup(id); } }, `一键认领剩余 ${gl.tasks.filter(t => !t.assignee).length} 件`)));
+    }
     if (gl.status === "active") {
       const ti = el("input", { placeholder: "给共同目标加一件事" }), hi = el("input", { type: "number", step: "0.5", value: "1" }), di = el("input", { type: "date", value: gl.due || "" });
       c.append(el("div", { class: "add-inline" }, ti, hi, di, el("button", { class: "small", onclick: async () => { if (!ti.value.trim()) return; await api("/api/tasks", "POST", { title: ti.value.trim(), est_hours: +hi.value || 1, due: di.value || null, goal_id: gl.id }); loadGroup(id); } }, "添加")));

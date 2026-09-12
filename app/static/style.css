@@ -180,3 +180,7 @@ table.grid th { color:var(--ink); background:var(--panel-hi); font-weight:600; f
 .steps li::before { counter-increment:s; content:counter(s); font-family:var(--font-mono); color:var(--yellow); border:1px solid var(--green-border); min-width:26px; height:26px; display:inline-flex; align-items:center; justify-content:center; }
 .steps li .t { flex:1; } .steps li .t b { color:#fff; display:block; } .steps li .t span { color:var(--ink-dim); font-size:13px; }
 ::-webkit-scrollbar { width:8px; } ::-webkit-scrollbar-track { background:var(--void); } ::-webkit-scrollbar-thumb { background:#1f3a33; }
+
+.topbar { position:fixed; top:10px; right:16px; z-index:50; background:var(--panel); border:1px solid var(--green-border); padding:6px 10px; display:flex; gap:8px; align-items:center; font-size:13px; }
+.topbar b { color:var(--yellow); font-family:var(--font-mono); }
+@media (max-width:900px) { .topbar { position:static; margin-bottom:10px; } }

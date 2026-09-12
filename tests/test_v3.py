@@ -279,3 +279,14 @@ class V13(unittest.TestCase):
         self.assertEqual(self.c.patch(f"/api/tasks/{tid}", json={"title": "t2"}).status_code, 200)   # 内容全员可改
         self.assertEqual(self.c.post(f"/api/review/{tid}/done").status_code, 200)     # 组长可完成
         d = c2.get("/api/ddl").json(); self.assertTrue(all("can_settle" in x for x in d["upcoming_goals"] + d["due_goals"]))
+
+
+class V14(unittest.TestCase):
+    def test_claim_all(self):
+        c = TestClient(app); c.post("/api/register", json={"username": "oli", "password": "pass1234"})
+        g = c.post("/api/groups", json={"name": "认领组"}).json()
+        gg = c.post("/api/goals", json={"title": "共同", "due": "2026-10-01", "tasks": [{"title": "a", "est_hours": 1}, {"title": "b", "est_hours": 1}], "group_id": g["id"]}).json()["goal_id"]
+        self.assertEqual(c.post(f"/api/goals/{gg}/claim_all").json()["claimed"], 2)
+        self.assertEqual(c.post(f"/api/goals/{gg}/claim_all").json()["claimed"], 0)
+        c2 = TestClient(app); c2.post("/api/register", json={"username": "pat", "password": "pass1234"})
+        self.assertEqual(c2.post(f"/api/goals/{gg}/claim_all").status_code, 404)

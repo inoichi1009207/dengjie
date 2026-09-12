@@ -1206,6 +1206,16 @@ def join_group(j: JoinIn, u: dict = Depends(current_user)):
     return {"id": g["id"], "name": g["name"]}
 
 
+@app.post("/api/goals/{gid}/claim_all")
+def claim_all(gid: int, u: dict = Depends(current_user)):
+    """共同目标:一键认领所有未认领任务。"""
+    g = db.row("SELECT * FROM goals WHERE id=?", (gid,))
+    if not g or not g["group_id"] or not db.row("SELECT 1 FROM group_members WHERE group_id=? AND user_id=?", (g["group_id"], u["id"])):
+        raise HTTPException(404, "目标不存在或不在该小组")
+    n = db.run("UPDATE tasks SET user_id=? WHERE goal_id=? AND user_id IS NULL AND status!='done'", (u["id"], gid))
+    return {"claimed": n}
+
+
 @app.get("/api/groups")
 def my_groups(u: dict = Depends(current_user)):
     return db.rows("SELECT g.id,g.name,g.owner_id FROM groups g JOIN group_members m ON m.group_id=g.id WHERE m.user_id=?", (u["id"],))
