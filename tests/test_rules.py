@@ -42,8 +42,8 @@ class Rules(unittest.TestCase):
                  T(3, sd="2026-09-17", rem=1, due="2026-09-17"), T(4, sd="2026-09-16", rem=6, due="2026-09-19")]
         p = rules.too_tired_plan(tasks, self.today, daily_hours=5.0)
         self.assertEqual(p["tomorrow_cap"], 3.0)
-        by_id = {m["id"]: m["to"] for m in p["moves"]}
-        self.assertEqual(by_id[3], "2026-09-17")            # 截止最近且最小,进明天
+        by_id = {m["id"]: m["to"] for m in p["moves"] + p["stays"]}
+        self.assertEqual(by_id[3], "2026-09-17")            # 截止最近且最小,留在明天(原地,记在 stays)
         self.assertEqual(by_id[1], "2026-09-17")            # 1+2 = 3 ≤ cap
         self.assertNotEqual(by_id[4], "2026-09-17")         # 6h 放不进明天,后推
         self.assertTrue(all(m["to"] <= "2026-09-20" for m in p["moves"]))

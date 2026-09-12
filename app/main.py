@@ -252,7 +252,12 @@ def settle_goal(gid: int, s: SettleIn, u: dict = Depends(current_user)):
     elif s.action == "extend":
         if not s.new_due:
             raise HTTPException(400, "延期要给新截止日")
-        dt.date.fromisoformat(s.new_due)
+        try:
+            nd = dt.date.fromisoformat(s.new_due)
+        except ValueError:
+            raise HTTPException(400, "新截止日须为 YYYY-MM-DD")
+        if g["due"] and nd <= rules.d(g["due"]):
+            raise HTTPException(400, "新截止日要晚于原截止日")
         db.run("UPDATE goals SET due=? WHERE id=?", (s.new_due, gid))
         db.run("UPDATE tasks SET due=?, scheduled_date=CASE WHEN scheduled_date IS NOT NULL AND scheduled_date<? THEN ? ELSE scheduled_date END WHERE goal_id=? AND status='confirmed' AND due<?",
                (s.new_due, today().isoformat(), today().isoformat(), gid, s.new_due))
@@ -357,7 +362,7 @@ def plan_auto(u: dict = Depends(current_user)):
 
 @app.get("/api/timeline")
 def timeline(date: str | None = None, u: dict = Depends(current_user)):
-    day = rules.d(date) or today()
+    day = _qdate(date)
     wk = rules.week_number(_semester_start(u), day)
     classes = [] if (_semester_start(u) and wk is None) else [s for s in _slots(u["id"]) if s["day"] == day.weekday() + 1 and (wk is None or not s["weeks"] or wk in s["weeks"])]
     tasks = rules.today_tasks(_my_tasks(u["id"]), day) if day == today() else \
@@ -370,7 +375,7 @@ def demo_reset(u: dict = Depends(current_user)):
     """清空当前账号的个人数据(不动小组)。"""
     for sql in ("DELETE FROM tasks WHERE user_id=? AND group_id IS NULL", "DELETE FROM goals WHERE user_id=?",
                 "DELETE FROM schedule_slots WHERE user_id=?", "DELETE FROM progress_events WHERE user_id=?",
-                "DELETE FROM fatigue_events WHERE user_id=?"):
+                "DELETE FROM fatigue_events WHERE user_id=?", "DELETE FROM daily_reviews WHERE user_id=?", "DELETE FROM grades WHERE user_id=?"):
         db.run(sql, (u["id"],))
     db.run("UPDATE users SET weekly_hours=? WHERE id=?", (rules.WEEKLY_BASE_HOURS, u["id"]))
     return {"ok": True}
@@ -516,8 +521,8 @@ def _own_task(tid: int, uid: int) -> dict:
 def patch_task(tid: int, p: TaskPatch, u: dict = Depends(current_user)):
     _own_task(tid, u["id"])
     fields = p.model_dump(exclude_none=True)
-    if fields.get("status") not in (None, "pending", "confirmed", "done"):
-        raise HTTPException(400, "status 非法")
+    if "status" in fields:
+        raise HTTPException(400, "状态不能直接改:确认走 /confirm,完成走 /review/{id}/done,忽略走 DELETE")
     for k, v in fields.items():
         if k in ("est_hours", "remaining_hours"):
             v = _clamp_hours(v)
@@ -871,9 +876,16 @@ def _semester_start(u: dict) -> dt.date | None:
     return rules.d(u["semester_start"])
 
 
+def _qdate(date: str | None) -> dt.date:
+    try:
+        return rules.d(date) or today()
+    except ValueError:
+        raise HTTPException(400, "date 须为 YYYY-MM-DD")
+
+
 @app.get("/api/week")
 def week(date: str | None = None, u: dict = Depends(current_user)):
-    day = rules.d(date) or today()
+    day = _qdate(date)
     mon, sun = rules.week_bounds(day)
     wk = rules.week_number(_semester_start(u), mon)
     slots = _slots(u["id"])
@@ -1055,7 +1067,7 @@ def _daily_stats(u: dict, t: dt.date) -> dict:
 
 @app.get("/api/review/daily")
 def daily_review_get(date: str | None = None, u: dict = Depends(current_user)):
-    t = rules.d(date) or today()
+    t = _qdate(date)
     row = db.row("SELECT note,mood,ai_comment,created FROM daily_reviews WHERE user_id=? AND date=?", (u["id"], t.isoformat()))
     return {"stats": _daily_stats(u, t), "review": row}
 

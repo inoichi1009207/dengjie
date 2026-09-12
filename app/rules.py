@@ -114,7 +114,7 @@ def too_tired_plan(tasks: Iterable[dict], today: dt.date, daily_hours: float) ->
     days = [tomorrow] + [tomorrow + dt.timedelta(days=i) for i in range(1, 7) if tomorrow + dt.timedelta(days=i) <= sun]
     caps = {day: (cap if day == tomorrow else daily_hours) for day in days}
     load = {day: 0.0 for day in days}
-    moves, overflow = [], []
+    moves, overflow, stays = [], [], []
     for t in ordered:
         h = float(t.get("remaining_hours") or 0)
         placed = None
@@ -126,10 +126,14 @@ def too_tired_plan(tasks: Iterable[dict], today: dt.date, daily_hours: float) ->
             overflow.append({"id": t["id"], "title": t["title"], "hours": h, "due": t.get("due")})
             continue
         load[placed] += h
+        if t.get("scheduled_date") == placed.isoformat():
+            stays.append({"id": t["id"], "title": t["title"], "hours": h, "to": placed.isoformat()})   # 原地不动,不算迁移
+            continue
         moves.append({"id": t["id"], "title": t["title"], "hours": h,
                       "from": t.get("scheduled_date"), "to": placed.isoformat()})
-    return {"tomorrow": tomorrow.isoformat(), "tomorrow_cap": cap, "moves": moves, "overflow": overflow,
-            "tomorrow_titles": [m["title"] for m in moves if m["to"] == tomorrow.isoformat()]}
+    tm = tomorrow.isoformat()
+    return {"tomorrow": tm, "tomorrow_cap": cap, "moves": moves, "overflow": overflow, "stays": stays,
+            "tomorrow_titles": [x["title"] for x in moves + stays if x["to"] == tm]}
 
 
 def plan_days(tasks: Iterable[dict], today: dt.date, daily_cap: float, horizon_days: int = 14,

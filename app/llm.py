@@ -140,7 +140,7 @@ def decompose_goal(title: str, due: str | None, today: dt.date, context: list[di
             out = _chat_json(_DECOMPOSE_SYS, f"今天 {today.isoformat()};目标:{title};截止:{due or '未定'}{ctx}")
             tasks = out.get("tasks") or []
             if tasks:
-                return tag_resources([_norm_task(t) for t in tasks][:16], catalog)
+                return tag_resources([_norm_task(t) for t in tasks][:14], catalog)
         except Exception as e:  # 模型挂了退回桩,不让按钮死掉
             print("[llm] decompose failed:", e)
     return tag_resources(_decompose_stub(title, due, today), catalog)
@@ -165,7 +165,7 @@ def discuss_goal(title: str, due: str | None, today: dt.date, history: list[dict
             msgs.append({"role": "user", "content": feedback})
             r = client.chat.completions.create(model=_MODEL, temperature=0.3, response_format={"type": "json_object"}, messages=msgs)
             out = json.loads(r.choices[0].message.content or "{}")
-            tasks = [_norm_task(t) for t in (out.get("tasks") or [])][:16]
+            tasks = [_norm_task(t) for t in (out.get("tasks") or [])][:14]
             if tasks:
                 return {"note": str(out.get("note") or "已按你的意见调整。"), "tasks": tag_resources(tasks, catalog_match(title))}
         except Exception as e:
