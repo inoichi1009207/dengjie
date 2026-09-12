@@ -69,3 +69,9 @@ DENGJIE_DB=/srv/dengjie.db nohup python -m uvicorn app.main:app --host 0.0.0.0 -
 数据持久在 `/srv/dengjie.db`。域名与 HTTPS 可选,评委用 IP 也能访问。
 
 两条路 `apikey.txt` 都不上传(已 gitignore),密钥只走环境变量。
+
+## 线上(2026-09-12 起)
+
+- 地址:https://dj.klinik.ren (与 KliniK 同机,Nginx 反代 → 127.0.0.1:8792,Let's Encrypt 自动续期)。
+- 服务:`sudo systemctl status dengjie`;代码在服务器 `~/dengjie`,数据库 `~/dengjie/data/dengjie.db`,密钥与演示账号文件在同目录(600 权限,不入仓)。
+- 更新:本地打包 `app tools requirements.txt` 上传后 `sudo systemctl restart dengjie`;Nginx 与证书不必动。
