@@ -27,7 +27,14 @@ const colorOfClass = (s) => { const h = CLASS_HINT.find(([k]) => s.name.includes
 const goalColor = (gid) => PAL[gid % PAL.length];
 
 // ── 登录 / 壳 ──
-async function boot() { try { ME = await api("/api/me"); showApp(); } catch { $("#landing").hidden = false; } }
+async function boot() {
+  // 无论是否已登录,打开永远先看封面;已登录只多一个「继续」按钮
+  $("#landing").hidden = false;
+  try { ME = await api("/api/me"); const card = document.querySelector(".auth-card");
+    const cont = el("button", { class: "primary block", onclick: () => showApp() }, `以 ${ME.username} 身份继续 →`);
+    card.insertBefore(cont, card.querySelector("label")); $("#auth-title").textContent = "欢迎回来";
+  } catch { ME = null; }
+}
 async function auth(path) {
   try { await api(path, "POST", { username: $("#au").value.trim(), password: $("#ap").value }); ME = await api("/api/me"); showApp(); }
   catch (e) { $("#auth-msg").textContent = e.message; }
