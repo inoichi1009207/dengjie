@@ -45,7 +45,11 @@ button.primary { background:linear-gradient(180deg,#2f8a63,#1f5f44); border-colo
 button.primary:hover { color:#fff; box-shadow:0 0 22px rgba(42,133,96,.55); border-color:var(--green-bright); }
 button.ghost { background:transparent; color:var(--green-bright); }
 button.link { border:none; background:none; color:var(--green-bright); padding:0; clip-path:none; box-shadow:none; } button.link:hover { color:var(--orange); box-shadow:none; }
-button.small { padding:4px 10px; font-size:13px; } button.block { width:100%; margin-top:8px; } button:disabled { opacity:.5; cursor:default; }
+button.small { padding:4px 10px; font-size:13px; }
+button.danger { border-color:rgba(255,102,0,.6); color:var(--red); background:rgba(255,102,0,.08); } button.danger:hover { background:rgba(255,102,0,.2); color:#fff; border-color:var(--red); box-shadow:0 0 12px rgba(255,102,0,.35); }
+button.warn { border-color:rgba(255,153,0,.6); color:var(--orange); background:rgba(255,153,0,.08); } button.warn:hover { background:rgba(255,153,0,.2); color:#fff; }
+button.warn-link { color:var(--orange); }
+.goal .bar i { background:var(--gc, var(--yellow)); box-shadow:0 0 8px var(--gc, rgba(255,204,0,.4)); } button.block { width:100%; margin-top:8px; } button:disabled { opacity:.5; cursor:default; }
 .row { display:flex; gap:8px; align-items:center; margin:8px 0; flex-wrap:wrap; } .row .grow { flex:1; min-width:220px; } .row.wrap { flex-wrap:wrap; }
 .card { background:var(--panel); backdrop-filter:blur(8px); border:1px solid var(--green-border); box-shadow:0 0 10px var(--green-glow), inset 0 1px 0 rgba(255,255,255,.05); padding:18px 20px; margin-bottom:16px; position:relative; border-radius:0; }
 .card::before { content:''; position:absolute; top:0; left:0; right:0; height:1px; background:linear-gradient(90deg,transparent,var(--green),transparent); opacity:.5; animation:scan 6s linear infinite; pointer-events:none; }

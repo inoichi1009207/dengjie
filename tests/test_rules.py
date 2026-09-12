@@ -23,7 +23,7 @@ class Rules(unittest.TestCase):
     def test_class_hours_and_suggestion(self):
         slots = [{"slot_start": 1, "slot_end": 2, "weeks": [1, 2]}, {"slot_start": 3, "slot_end": 4, "weeks": [5]}]
         self.assertEqual(rules.class_hours_for_week(slots, 2), 1.5)
-        self.assertEqual(rules.suggested_weekly_hours(1.5), 54.5)
+        self.assertEqual(rules.suggested_weekly_hours(1.5), 68.5)
 
     def test_capacity_gap(self):
         tasks = [T(1, due="2026-09-18"), T(2, sd="2026-09-20", rem=5), T(3, due="2026-09-30"),

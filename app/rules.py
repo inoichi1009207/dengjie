@@ -11,7 +11,9 @@ import datetime as dt
 from typing import Iterable
 
 SLOT_HOURS = 0.75          # 一节课 45 分钟
-WEEKLY_BASE_HOURS = 56.0   # 承载力基准:每天 8 小时可用于课业(含上课),× 7;减去课时即可投入任务的时长
+DAILY_CAP = 10.0           # 日承载力:一天能放进课业的总小时(课 + 任务共用)
+WEEKLY_BASE_HOURS = DAILY_CAP * 7   # 70;减去课时 = 本周可投入任务的时长
+MAX_TASK_HOURS = 3.0       # 单个任务估时上限(演示口径)
 TIRED_FACTOR = 0.6
 
 
@@ -70,10 +72,20 @@ def committed_this_week(tasks: Iterable[dict], today: dt.date) -> list[dict]:
     return out
 
 
+def done_this_week(tasks: Iterable[dict], today: dt.date) -> list[dict]:
+    mon, sun = week_bounds(today)
+    return [t for t in tasks if t.get("status") == "done" and t.get("done_at") and mon <= d(t["done_at"][:10]) <= sun]
+
+
 def capacity_gap(tasks: Iterable[dict], weekly_hours: float, today: dt.date) -> dict:
+    """本周已排 = 未完成任务的剩余估时 + 本周已完成任务的估时(做完的时间已经花掉,不会加回空余)。"""
+    tasks = list(tasks)
     committed = committed_this_week(tasks, today)
-    hours = round(sum(float(t.get("remaining_hours") or 0) for t in committed), 2)
-    return {"committed_hours": hours, "weekly_hours": weekly_hours,
+    done = done_this_week(tasks, today)
+    open_h = sum(float(t.get("remaining_hours") or 0) for t in committed)
+    done_h = sum(float(t.get("est_hours") or 0) for t in done)
+    hours = round(open_h + done_h, 2)
+    return {"committed_hours": hours, "open_hours": round(open_h, 2), "done_hours": round(done_h, 2), "weekly_hours": weekly_hours,
             "gap": round(hours - weekly_hours, 2), "task_ids": [t["id"] for t in committed]}
 
 

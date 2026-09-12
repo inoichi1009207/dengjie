@@ -383,8 +383,19 @@ def ddl(u: dict = Depends(current_user)):
             "upcoming_goals": [g for g in goals if g["days_left"] > 0], "tasks": tasks[:50]}
 
 
+MAX_TASK_HOURS = rules.MAX_TASK_HOURS
+
+
+def _clamp_hours(h: float | None) -> float:
+    try:
+        return round(min(MAX_TASK_HOURS, max(0.0, float(h if h is not None else 1.0))), 2)
+    except (TypeError, ValueError):
+        return 1.0
+
+
 def _insert_task(user_id: int | None, t: TaskIn, source: str, goal_id: int | None = None,
                  group_id: int | None = None, status: str = "confirmed", external_id: str | None = None) -> int:
+    t.est_hours = _clamp_hours(t.est_hours)
     return db.run(
         "INSERT INTO tasks(user_id,goal_id,group_id,title,source,status,est_hours,remaining_hours,due,scheduled_date,external_id,note,created)"
         " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -451,10 +462,15 @@ class TaskPatch(BaseModel):
 
 
 def _own_task(tid: int, uid: int) -> dict:
+    """自己的任务;或所在小组的任务(共同目标/小组任务,不论是否认领、认领给谁)。"""
     t = db.row("SELECT * FROM tasks WHERE id=?", (tid,))
-    if not t or (t["user_id"] != uid and not (t["group_id"] and t["user_id"] is None)):
+    if not t:
         raise HTTPException(404, "任务不存在")
-    return t
+    if t["user_id"] == uid:
+        return t
+    if t["group_id"] and db.row("SELECT 1 FROM group_members WHERE group_id=? AND user_id=?", (t["group_id"], uid)):
+        return t
+    raise HTTPException(404, "任务不存在")
 
 
 @app.patch("/api/tasks/{tid}")
@@ -463,6 +479,8 @@ def patch_task(tid: int, p: TaskPatch, u: dict = Depends(current_user)):
     for k, v in p.model_dump(exclude_none=True).items():
         if k == "status" and v not in ("pending", "confirmed", "done"):
             raise HTTPException(400, "status 非法")
+        if k in ("est_hours", "remaining_hours"):
+            v = _clamp_hours(v)
         db.run(f"UPDATE tasks SET {k}=? WHERE id=?", (v, tid))
         if k == "est_hours":
             db.run("UPDATE tasks SET remaining_hours=MIN(remaining_hours,?) WHERE id=?", (v, tid))
@@ -867,6 +885,7 @@ def today_view(u: dict = Depends(current_user)):
         x["postponed"] = pc.get(x["id"], 0)
     return {"date": t.isoformat(), "tasks": todays, "streak": rules.streak(_done_dates(u["id"]), t),
             "pending": [x for x in tasks if x["status"] == "pending"], "classes": classes, "week_no": wk,
+            "daily_cap": rules.DAILY_CAP, "done_today": [x for x in tasks if x["status"] == "done" and (x["done_at"] or "")[:10] == t.isoformat()],
             "timeline": build_timeline(classes, todays)}
 
 
@@ -968,8 +987,8 @@ def tasks_batch(b: BatchEst, u: dict = Depends(current_user)):
         rem = it.get("remaining_hours")
         if rem is None:
             continue
-        rem = max(0.0, float(rem))
-        est = float(it.get("est_hours") or max(float(t["est_hours"] or 0), rem))
+        rem = _clamp_hours(rem)
+        est = _clamp_hours(it.get("est_hours") or max(float(t["est_hours"] or 0), rem))
         db.run("UPDATE tasks SET remaining_hours=?, est_hours=? WHERE id=?", (rem, max(est, rem), int(it["id"])))
         n += 1
     return {"updated": n}

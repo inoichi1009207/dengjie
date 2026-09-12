@@ -52,7 +52,7 @@ async function loadDdl() {
       due.append(el("div", { class: "row" }, el("span", { class: cdClass(g.days_left) }, daysLabel(g.days_left)), el("b", {}, g.title), el("span", { class: "muted" }, `任务 ${g.tasks_done}/${g.tasks_total}`),
         el("button", { class: "small primary", onclick: async () => { await api(`/api/goals/${g.id}/settle`, "POST", { action: "achieved" }); loadDdl(); } }, "达成了"),
         ni, el("button", { class: "small", onclick: async () => { if (!ni.value) return alert("先选新截止日"); await api(`/api/goals/${g.id}/settle`, "POST", { action: "extend", new_due: ni.value }); loadDdl(); } }, "延期到"),
-        el("button", { class: "small link", onclick: async () => { if (confirm("放弃这个目标?未完成的任务会删掉")) { await api(`/api/goals/${g.id}/settle`, "POST", { action: "drop" }); loadDdl(); } } }, "放弃")));
+        el("button", { class: "small danger", onclick: async () => { if (confirm("放弃这个目标?未完成的任务会删掉")) { await api(`/api/goals/${g.id}/settle`, "POST", { action: "drop" }); loadDdl(); } } }, "放弃")));
     }
   }
   const gl = $("#ddl-goals"); gl.innerHTML = "";
@@ -76,7 +76,7 @@ function ledgerCard(box, w) {
       el("div", { class: "bar" }, el("i", { style: `width:${pct}%` }))),
     el("div", { class: "facts" },
       el("div", {}, "本周已排", el("b", {}, `${g.committed_hours} h`), el("button", { class: "small ghost", title: "按截止日与每天容量把任务摊到各天", onclick: async () => { const r = await api("/api/plan/auto", "POST"); alert(`已排 ${r.planned} 件任务到各天${r.overflow.length ? `;${r.overflow.length} 件截止前排不下:${r.overflow.map(o => o.title).join("、")}` : ""}`); location.hash = ""; switchTab(document.querySelector("#nav button.active").dataset.tab); } }, "自动排程")),
-      el("div", {}, "本周承载力(可投入)", el("b", {}, `${g.weekly_hours} h`), el("span", {}, `日均 ${(g.weekly_hours / 7).toFixed(1)} h${w.class_hours != null ? " · 课时 " + w.class_hours + " h" : ""} `), el("button", { class: "small ghost", title: "每天 8 小时 × 7 − 本周课时", onclick: async () => { const r = await api("/api/settings/adopt_suggested", "POST"); toast(`已按课表重算:本周承载力 ${r.weekly_hours} 小时`); switchTab(document.querySelector("#nav button.active").dataset.tab); } }, "按课表重算")),
+      el("div", {}, "本周可投入任务", el("b", {}, `${g.weekly_hours} h`), el("span", {}, `日承载力 10 h × 7${w.class_hours != null ? " − 课时 " + w.class_hours + " h" : ""} `), el("button", { class: "small ghost", title: "日承载力 10 × 7 − 本周课时", onclick: async () => { const r = await api("/api/settings/adopt_suggested", "POST"); toast(`已按课表重算:本周可投入 ${r.weekly_hours} 小时`); switchTab(document.querySelector("#nav button.active").dataset.tab); } }, "按课表重算")),
       el("div", {}, "教学周", el("b", {}, w.week_no ? `第 ${w.week_no} 周` : (ME && ME.semester_start ? "开学前" : "未设")))));
 }
 
@@ -90,22 +90,23 @@ function toast(msg, warn) { const t = $("#toast"); t.textContent = msg; t.classN
 const fmtH = (h) => { const hh = Math.floor(h), mm = Math.round((h - hh) * 60); return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`; };
 // 负载条:每件事按小时占一块,不引入时刻。cap = 日承载力,超出部分照样画,只是标红提示。
 function renderStrip(box, classes, tasks, cap) {
-  // 承载力已经扣过课时,所以课单独占一段、不算进承载力;空余/超出只按任务对承载力算
+  // 日承载力 = 课 + 任务共用;做完的任务仍占位(时间已经花掉)
   box.innerHTML = "";
   const clsItems = classes.map(s => ({ kind: "class", title: s.name, hours: Math.max(0.25, ((s.slot_end || s.slot_start || 1) - (s.slot_start || 1) + 1) * 0.75), color: colorOfClass(s) }));
   const tkItems = tasks.map(t => ({ kind: t.status === "done" ? "done" : "task", title: t.title, hours: Math.max(0.25, +(t.status === "done" ? t.est_hours : t.remaining_hours) || 0.5), color: colorOf(t) }));
-  const cls = clsItems.reduce((a, b) => a + b.hours, 0), tk = tkItems.reduce((a, b) => a + b.hours, 0);
-  const budget = Math.max(cap || 0, tk), total = Math.max(cls + budget, 1);
+  const cls = clsItems.reduce((a, b) => a + b.hours, 0), tk = tkItems.reduce((a, b) => a + b.hours, 0), used = cls + tk;
+  const capN = cap || 10, total = Math.max(capN, used);
   const bar = el("div", { class: "strip" });
   for (const it of [...clsItems, ...tkItems]) bar.append(el("div", { class: `seg ${it.kind}`, style: `width:${it.hours / total * 100}%;--tc:${it.color}`, title: `${it.title} · ${it.hours}h` }, it.title));
-  if (tk < budget) bar.append(el("div", { class: "free" }, `空余 ${(budget - tk).toFixed(1)}h`));
+  if (used < total) bar.append(el("div", { class: "free" }, `空余 ${(total - used).toFixed(1)}h`));
   box.append(bar);
-  const over = cap && tk > cap;
-  box.append(el("div", { class: "strip-meta", style: over ? "color:var(--red)" : "" }, `课 ${cls.toFixed(1)}h(不占承载力) · 任务 ${tk.toFixed(1)}h / 日承载力 ${(cap || 0).toFixed(1)}h${over ? " · 超出 " + (tk - cap).toFixed(1) + "h" : " · 空余 " + (cap - tk).toFixed(1) + "h"}`));
+  const over = used > capN;
+  box.append(el("div", { class: "strip-meta", style: over ? "color:var(--red)" : "" }, `课 ${cls.toFixed(1)}h + 任务 ${tk.toFixed(1)}h = ${used.toFixed(1)}h / 日承载力 ${capN.toFixed(0)}h${over ? " · 超出 " + (used - capN).toFixed(1) + "h" : " · 空余 " + (capN - used).toFixed(1) + "h"}`));
   const legend = el("div", { class: "strip-legend" });
   const seen = new Set();
   for (const t of tasks) { const k = t.goal_id ? `目标 ${t.goal_id}` : (SRC[t.source] || t.source); if (seen.has(k)) continue; seen.add(k); legend.append(el("span", { style: `--tc:${colorOf(t)}` }, el("i"), k)); }
   if (classes.length) legend.append(el("span", { style: "--tc:var(--green)" }, el("i"), "课(斜纹)"));
+  if (tasks.some(t => t.status === "done")) legend.append(el("span", { class: "muted" }, "划线 = 已完成,时间已花掉"));
   box.append(legend);
 }
 // 行内改任务:标题 / 预计小时 / 截止日
@@ -132,7 +133,7 @@ async function loadToday() {
   for (const t of d.tasks) ul.append(taskLi(t, [
     el("button", { class: "small primary", onclick: async () => { await api(`/api/review/${t.id}/done`, "POST"); loadToday(); } }, "完成"),
     editBtn(t, loadToday),
-    el("button", { class: "small", onclick: async () => {
+    el("button", { class: "small warn", onclick: async () => {
       const r = await api(`/api/review/${t.id}/postpone`, "POST");
       let msg = `「${t.title}」已推到 ${r.scheduled_date}(第 ${r.postponed} 次推迟)`;
       if (r.past_due) msg += `;已越过它自己的截止日 ${t.due}`;
@@ -140,9 +141,13 @@ async function loadToday() {
       toast(msg, r.past_due || r.goal_risk); loadToday();
     } }, "推迟"),
   ]));
-  const cap = w.gap.weekly_hours / 7; $("#daily-cap").textContent = cap.toFixed(1);
-  const doneList = (await api("/api/tasks?status=done")).filter(t => (t.done_at || "").slice(0, 10) === d.date);
+  const cap = d.daily_cap || 10; $("#daily-cap").textContent = cap.toFixed(0);
+  const doneList = d.done_today || [];
   renderStrip($("#today-strip"), d.classes || [], [...d.tasks, ...doneList], cap);
+  const up = $("#today-upcoming"); up.innerHTML = "";
+  const soon = (await api("/api/ddl")).tasks.filter(t => t.days_left <= 7).slice(0, 8);
+  if (!soon.length) up.append(el("li", { class: "empty" }, "七天内没有到期的任务。"));
+  for (const t of soon) up.append(el("li", { style: `--tc:${colorOf(t)}` }, el("span", { class: cdClass(t.days_left) }, daysLabel(t.days_left)), el("div", { class: "t" }, t.title, el("div", { class: "meta" }, `截止 ${t.due} · 预计 ${t.remaining_hours}h`))));
   // 余力:今天曾有任务且全部做完
   const sp = $("#spare-card"); const doneToday = doneList.length;
   sp.hidden = !(d.tasks.length === 0 && doneToday > 0);
@@ -161,7 +166,7 @@ function renderPending(ul, pending, refresh) {
   if (!pending.length) ul.append(el("li", { class: "empty" }, "暂无。去「接入」拉取 Canvas 作业、读取邮件,或一键导入。"));
   for (const t of pending) ul.append(taskLi(t, [
     el("button", { class: "small primary", onclick: async () => { await api(`/api/tasks/${t.id}/confirm`, "POST"); refresh(); } }, "计入"),
-    el("button", { class: "small", onclick: async () => { await api(`/api/tasks/${t.id}`, "DELETE"); refresh(); } }, "忽略"),
+    el("button", { class: "small danger", onclick: async () => { await api(`/api/tasks/${t.id}`, "DELETE"); refresh(); } }, "忽略"),
   ]));
   if (pending.length > 1) ul.append(el("li", {}, el("button", { class: "small ghost", onclick: async () => { for (const t of pending) await api(`/api/tasks/${t.id}/confirm`, "POST"); refresh(); } }, `全部计入(${pending.length})`)));
 }
@@ -173,9 +178,9 @@ $("#quick-add").onsubmit = async (e) => {
 };
 $("#calib-toggle").onclick = async () => {
   const p = $("#calib-panel"); if (!p.hidden) { p.hidden = true; return; }
-  const ts = (await api("/api/tasks?status=confirmed")).sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999")).slice(0, 30);
+  const ts = (await api("/api/today")).tasks;
   p.innerHTML = ""; p.hidden = false;
-  if (!ts.length) { p.append(el("p", { class: "hint" }, "没有待做任务。")); return; }
+  if (!ts.length) { p.append(el("p", { class: "hint" }, "今天没有待做任务。")); return; }
   const rows = ts.map(t => ({ t, inp: el("input", { type: "number", step: "0.5", min: "0", value: t.remaining_hours, style: "width:80px" }) }));
   const tbl = el("table", { class: "grid" }, el("thead", {}, el("tr", {}, el("th", {}, "任务"), el("th", {}, "截止"), el("th", {}, "原估时"), el("th", {}, "剩余小时"))));
   const tb = el("tbody"); for (const r of rows) tb.append(el("tr", {}, el("td", {}, r.t.title), el("td", {}, r.t.due || "—"), el("td", {}, `${r.t.est_hours}`), el("td", {}, r.inp))); tbl.append(tb); p.append(tbl);
@@ -197,7 +202,7 @@ $("#too-tired").onclick = async () => {
   if (p.advice) box.append(el("p", { class: "hint" }, p.advice, " ", p.advice_kind === "extend_due"
     ? el("button", { class: "small", onclick: () => switchTab("ddl") }, "去 DDL 调截止日")
     : el("button", { class: "small", onclick: async () => { const r = await api("/api/settings/reduce_weekly", "POST"); toast(`本周承载力已调为 ${r.weekly_hours} 小时`); loadToday(); } }, "采用,下调两成")));
-  box.append(el("div", { class: "row" }, el("button", { class: "primary", onclick: async () => { await api("/api/review/too_tired/apply", "POST", { moves: p.moves, overflow: p.overflow }); loadToday(); } }, "就这么办"), el("button", { onclick: () => box.hidden = true }, "算了,保持原样")));
+  box.append(el("div", { class: "row" }, el("button", { class: "warn", onclick: async () => { await api("/api/review/too_tired/apply", "POST", { moves: p.moves, overflow: p.overflow }); loadToday(); } }, "就这么办"), el("button", { onclick: () => box.hidden = true }, "算了,保持原样")));
 };
 
 // ── 目标 ──
@@ -258,10 +263,10 @@ async function loadGoals() {
     const st = g.status === "achieved" ? el("span", { class: "tag canvas" }, "已达成") : g.status === "dropped" ? el("span", { class: "tag" }, "已放弃") : "";
     const card = el("div", { class: "card goal", style: `--gc:${goalColor(g.id)}` },
       el("div", { class: "goal-head" }, el("b", {}, g.title, st), el("span", { class: "row" }, el("span", { class: "muted" }, `${g.due ? "截止 " + g.due + " · " : ""}完成 ${done}/${n}`),
-        el("button", { class: "small link", onclick: async () => { if (confirm(`删除目标「${g.title}」和它的 ${n} 个任务?`)) { await api(`/api/goals/${g.id}`, "DELETE"); loadGoals(); } } }, "删除目标"))),
+        el("button", { class: "small danger", onclick: async () => { if (confirm(`删除目标「${g.title}」和它的 ${n} 个任务?`)) { await api(`/api/goals/${g.id}`, "DELETE"); loadGoals(); } } }, "删除目标"))),
       el("div", { class: "bar" }, el("i", { style: `width:${n ? done / n * 100 : 0}%` })));
     const ul = el("ul", { class: "tasks" });
-    for (const t of g.tasks) ul.append(taskLi(t, [t.status === "done" ? el("span", { class: "tag" }, "已完成") : editBtn(t, loadGoals), t.status === "done" ? "" : el("button", { class: "small link", onclick: async () => { await api(`/api/tasks/${t.id}`, "DELETE"); loadGoals(); } }, "删")]));
+    for (const t of g.tasks) ul.append(taskLi(t, [t.status === "done" ? el("span", { class: "tag" }, "已完成") : editBtn(t, loadGoals), t.status === "done" ? "" : el("button", { class: "small danger", onclick: async () => { await api(`/api/tasks/${t.id}`, "DELETE"); loadGoals(); } }, "删")]));
     card.append(ul);
     const ti = el("input", { placeholder: "在这个目标下再加一件事" }), hi = el("input", { type: "number", step: "0.5", value: "1" }), di = el("input", { type: "date" });
     card.append(el("div", { class: "add-inline" }, ti, hi, di, el("button", { class: "small", onclick: async () => { if (!ti.value.trim()) return; await api("/api/tasks", "POST", { title: ti.value.trim(), est_hours: +hi.value || 1, due: di.value || null, goal_id: g.id }); loadGoals(); } }, "添加")));
@@ -303,9 +308,8 @@ function showDay(d) {
     ul.append(taskLi(t, [
       d.is_today && t.status === "confirmed" ? el("button", { class: "small primary", onclick: async () => { await api(`/api/review/${t.id}/done`, "POST"); loadCalendar(); } }, "完成") : "",
       editBtn(t, loadCalendar),
-      !d.is_today && t.status === "confirmed" ? el("button", { class: "small primary", onclick: () => move(tstr) }, "腾挪到今天") : "",
-      t.status === "confirmed" ? el("span", { class: "row", style: "margin:0;gap:4px" }, di, el("button", { class: "small", onclick: () => { if (di.value && di.value !== d.date) move(di.value); } }, "腾挪到")) : "",
-      el("button", { class: "small link", onclick: async () => { await api(`/api/tasks/${t.id}`, "DELETE"); loadCalendar(); } }, "删")]));
+      t.status === "confirmed" ? el("span", { class: "row", style: "margin:0;gap:4px" }, el("button", { class: "small", onclick: () => { if (di.value && di.value !== d.date) move(di.value); } }, "腾挪到"), di) : "",
+      el("button", { class: "small danger", onclick: async () => { await api(`/api/tasks/${t.id}`, "DELETE"); loadCalendar(); } }, "删")]));
   }
   box.append(el("h3", {}, "任务"), ul);
   const ti = el("input", { placeholder: "给这天加一件事" }), hi = el("input", { type: "number", step: "0.5", value: "1" });
@@ -446,7 +450,8 @@ async function loadGroup(id) {
     if (!gl.tasks.length) ul.append(el("li", { class: "empty" }, "这个共同目标还没有任务,在下面加。"));
     for (const t of gl.tasks) ul.append(taskLi(t, [
       t.assignee ? el("span", { class: "tag" }, t.status === "done" ? `${t.assignee} 已完成` : `${t.assignee} 认领`) : el("button", { class: "small primary", onclick: async () => { await api(`/api/tasks/${t.id}/claim`, "POST"); loadGroup(id); } }, "我来认领"),
-      t.assignee && t.status !== "done" && t.user_id === ME.id ? el("button", { class: "small", onclick: async () => { await api(`/api/review/${t.id}/done`, "POST"); loadGroup(id); } }, "完成") : ""]));
+      t.assignee && t.status !== "done" && t.user_id === ME.id ? el("button", { class: "small", onclick: async () => { await api(`/api/review/${t.id}/done`, "POST"); loadGroup(id); } }, "完成") : "",
+      t.status !== "done" ? editBtn(t, () => loadGroup(id)) : ""]));
     c.append(ul);
     if (gl.status === "active") {
       const ti = el("input", { placeholder: "给共同目标加一件事" }), hi = el("input", { type: "number", step: "0.5", value: "1" }), di = el("input", { type: "date", value: gl.due || "" });

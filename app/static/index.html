@@ -62,6 +62,8 @@
         <div class="card">
           <h2>今天的课 <span id="today-week" class="muted"></span></h2>
           <ul id="today-classes" class="tasks"></ul>
+          <h3 style="margin-top:12px">今日负载条 <span class="muted">课与任务共用日承载力,每件事按小时占一块</span></h3>
+          <div id="today-strip"></div>
           <h2 style="margin-top:14px">今天要做的任务 <span class="muted">长期目标请到「目标」页立,拆出的任务会按日期出现在这里</span></h2>
           <ul id="today-list" class="tasks"></ul>
           <form id="quick-add" class="quick-add">
@@ -70,15 +72,15 @@
             <label>截止日<input id="qa-due" type="date"></label>
             <button class="primary">添加任务</button>
           </form>
-          <p class="tired-row">今天状态不好? <button id="too-tired" class="link">让登阶把明天排轻一点 →</button> <span class="muted">· 日承载力 <b id="daily-cap" class="num"></b> 小时(本周可投入 ÷ 7)</span></p>
+          <p class="tired-row">今天状态不好? <button id="too-tired" class="link warn-link">让登阶把明天排轻一点 →</button> <span class="muted">· 日承载力 <b id="daily-cap" class="num"></b> 小时(课 + 任务共用)</span></p>
           <div id="tired-preview" class="preview" hidden></div>
           <div id="spare-card" class="preview" hidden></div>
-          <p class="tired-row"><button id="calib-toggle" class="link">校准估时 →</button> <span class="muted">复盘时把剩余小时改准,时间账才准</span></p>
+          <p class="tired-row"><button id="calib-toggle" class="link">校准今天的估时 →</button> <span class="muted">复盘时把今天各件事的剩余小时改准,时间账才准</span></p>
           <div id="calib-panel" hidden></div>
         </div>
         <div class="card">
-          <h2>今日负载条 <span class="muted">每件事按小时占一块,颜色按分类</span></h2>
-          <div id="today-strip"></div>
+          <h2>近期截止 <span class="muted">七天内到期的任务</span></h2>
+          <ul id="today-upcoming" class="tasks"></ul>
         </div>
       </div>
     </section>
@@ -146,7 +148,7 @@
       <div class="int-grid">
         <div class="card">
           <h2>课表 <span id="int-sched-status" class="status"></span></h2>
-          <p class="hint">导入课表:教学信息网导出的 PDF、课表截图(png/jpg)、Markdown 或文本文件都行,AI 会自己读;也可以把课表文字直接粘贴到下面;习惯用工具的同学可以跑 <code>tools/dengjie_sync.py</code> 一键脚本,或把提示词交给自己的 AI 助手(见上方一键导入)。保存后本周承载力按「每天 8 小时 × 7 − 课时」自动更新。</p>
+          <p class="hint">导入课表:教学信息网导出的 PDF、课表截图(png/jpg)、Markdown 或文本文件都行,AI 会自己读;也可以把课表文字直接粘贴到下面;习惯用工具的同学可以跑 <code>tools/dengjie_sync.py</code> 一键脚本,或把提示词交给自己的 AI 助手(见上方一键导入)。保存后本周可投入按「日承载力 10 × 7 − 课时」自动更新。</p>
           <div class="row"><input id="sch-file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.md,.txt,.csv,image/*,application/pdf,text/plain,text/markdown"><span id="sch-file-msg" class="hint"></span></div>
           <textarea id="sch-text" rows="6" placeholder="或粘贴课表文字"></textarea>
           <div class="row"><button id="sch-parse" class="primary">解析</button><span id="sch-msg" class="hint"></span></div>
@@ -209,8 +211,8 @@
       <div class="int-grid">
         <div class="card">
           <h2>承载力与学期</h2>
-          <label>本周承载力 / 可投入时长(小时) <input id="s-hours" type="number" min="0" step="0.5"></label>
-          <p class="hint">保存课表后自动按「每天 8 小时 × 7 − 课时」算;也可以手动改,或 <button id="s-adopt" class="link">按课表重算</button></p>
+          <label>本周可投入任务的时长(小时) <input id="s-hours" type="number" min="0" step="0.5"></label>
+          <p class="hint">日承载力 10 小时(课 + 任务共用)。保存课表后自动按「10 × 7 − 课时」算;也可以手动改,或 <button id="s-adopt" class="link">按课表重算</button></p>
           <label>学期开始日 <input id="s-start" type="date"></label>
           <p class="hint">用于算教学周,默认 2026-09-13。</p>
           <div class="row"><button id="s-save" class="primary">保存</button><span id="s-msg" class="hint"></span></div>

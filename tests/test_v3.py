@@ -29,7 +29,7 @@ class V3(unittest.TestCase):
                '"canvas_tasks":[{"external_id":"canvas:assignment:1","title":"[线代] 作业1","due":"2026-09-20","est_hours":2}],' \
                '"mail_tasks":[{"external_id":"mail:9","title":"提交实验报告","due":"2026-09-25","est_hours":1}]}\n完'
         r = self.c.post("/api/import/bundle", json={"text": text}).json()
-        self.assertEqual((r["schedule"], r["canvas_tasks"], r["mail_tasks"]), (1, 1, 1)); self.assertEqual(r["weekly_hours"], 54.5)
+        self.assertEqual((r["schedule"], r["canvas_tasks"], r["mail_tasks"]), (1, 1, 1)); self.assertEqual(r["weekly_hours"], 68.5)
         r = self.c.post("/api/import/bundle", json={"text": text}).json(); self.assertEqual(r["skipped"], 2)
         pend = self.c.get("/api/tasks?status=pending").json(); self.assertEqual({t["source"] for t in pend}, {"canvas", "email"})
         self.assertEqual(self.c.post("/api/import/bundle", json={"text": "没有json"}).status_code, 400)
@@ -56,7 +56,7 @@ class V3(unittest.TestCase):
         self.assertEqual(self.c.post(f"/api/goals/{gid2}/settle", json={"action": "nope"}).status_code, 400)
 
     def test_06_demo_seed_reset_and_delete_goal(self):
-        r = self.c.post("/api/demo/seed").json(); self.assertTrue(r["ok"]); self.assertLess(r["weekly_hours"], 56)
+        r = self.c.post("/api/demo/seed").json(); self.assertTrue(r["ok"]); self.assertLess(r["weekly_hours"], 70)
         st = self.c.get("/api/integrations/status").json(); self.assertEqual(st["schedule_slots"], 12)
         t = self.c.get("/api/today").json(); self.assertGreaterEqual(len(t["pending"]), 4); self.assertTrue(t["classes"])  # 09-16 周三有课
         gid = r["goal_id"]
@@ -166,3 +166,34 @@ class V3(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class V10(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.c = TestClient(app)
+        assert cls.c.post("/api/register", json={"username": "fay", "password": "pass1234"}).status_code == 200
+
+    def test_clamp_3h_and_done_keeps_hours(self):
+        a = self.c.post("/api/tasks", json={"title": "大活", "est_hours": 8, "due": "2026-09-16", "scheduled_date": "2026-09-16"}).json()["id"]
+        t = next(x for x in self.c.get("/api/tasks").json() if x["id"] == a); self.assertEqual((t["est_hours"], t["remaining_hours"]), (3.0, 3.0))
+        self.assertEqual(self.c.patch(f"/api/tasks/{a}", json={"est_hours": 9}).json()["est_hours"], 3.0)
+        self.assertEqual(self.c.patch("/api/tasks_batch", json={"items": [{"id": a, "remaining_hours": 7}]}).json()["updated"], 1)
+        self.assertEqual(next(x for x in self.c.get("/api/tasks").json() if x["id"] == a)["remaining_hours"], 3.0)
+        before = self.c.get("/api/week").json()["gap"]["committed_hours"]
+        self.c.post(f"/api/review/{a}/done")
+        after = self.c.get("/api/week").json()["gap"]
+        self.assertEqual(after["committed_hours"], before)           # 做完的时间不会加回空余
+        self.assertEqual(after["done_hours"], 3.0)
+        t = self.c.get("/api/today").json(); self.assertEqual(t["daily_cap"], 10.0); self.assertEqual([x["id"] for x in t["done_today"]], [a])
+
+    def test_group_member_can_edit_any_group_task(self):
+        g = self.c.post("/api/groups", json={"name": "改任务组"}).json()
+        c2 = TestClient(app); c2.post("/api/register", json={"username": "gus", "password": "pass1234"}); c2.post("/api/groups/join", json={"code": g["invite_code"]})
+        gg = self.c.post("/api/goals", json={"title": "共同目标", "due": "2026-10-01", "tasks": [{"title": "t1", "est_hours": 1}], "group_id": g["id"]}).json()
+        tid = gg["task_ids"][0]
+        c2.post(f"/api/tasks/{tid}/claim")                                                   # gus 认领
+        r = self.c.patch(f"/api/tasks/{tid}", json={"title": "t1 改过"}); self.assertEqual(r.status_code, 200)   # fay 未认领也能改
+        r = c2.patch(f"/api/tasks/{tid}", json={"est_hours": 2}); self.assertEqual(r.json()["est_hours"], 2.0)
+        c3 = TestClient(app); c3.post("/api/register", json={"username": "hal", "password": "pass1234"})
+        self.assertEqual(c3.patch(f"/api/tasks/{tid}", json={"title": "x"}).status_code, 404)  # 非成员不能改

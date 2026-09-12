@@ -44,9 +44,9 @@ def _chat_json(system: str, user: str) -> dict:
 # ── 目标拆解 ──────────────────────────────────────────────────────────────
 
 _DECOMPOSE_SYS = (
-    "你是交大学生的学习规划助手。把用户的长期目标拆成 4–10 个可执行任务。"
+    "你是交大学生的学习规划助手。把用户的长期目标拆成 4–14 个可执行任务。"
     "只输出 JSON:{\"tasks\":[{\"title\":str,\"est_hours\":number,\"due\":\"YYYY-MM-DD\",\"resource\":str|null}]}。"
-    "任务要具体到能直接开始做;est_hours 是诚实的小时估计,**单个任务不超过 8 小时**,更大的内容按周拆成多个任务;"
+    "任务要具体到能直接开始做;est_hours 是诚实的小时估计,**单个任务不超过 3 小时**,更大的内容拆成多个 ≤3 小时的任务;"
     "due 不晚于目标截止日、按顺序递增、尽量分散到不同周;"
     "resource 只写公开课/教材章节名,不编造链接;不确定就写 null。"
 )
@@ -140,7 +140,7 @@ def decompose_goal(title: str, due: str | None, today: dt.date, context: list[di
             out = _chat_json(_DECOMPOSE_SYS, f"今天 {today.isoformat()};目标:{title};截止:{due or '未定'}{ctx}")
             tasks = out.get("tasks") or []
             if tasks:
-                return tag_resources([_norm_task(t) for t in tasks][:12], catalog)
+                return tag_resources([_norm_task(t) for t in tasks][:16], catalog)
         except Exception as e:  # 模型挂了退回桩,不让按钮死掉
             print("[llm] decompose failed:", e)
     return tag_resources(_decompose_stub(title, due, today), catalog)
@@ -165,7 +165,7 @@ def discuss_goal(title: str, due: str | None, today: dt.date, history: list[dict
             msgs.append({"role": "user", "content": feedback})
             r = client.chat.completions.create(model=_MODEL, temperature=0.3, response_format={"type": "json_object"}, messages=msgs)
             out = json.loads(r.choices[0].message.content or "{}")
-            tasks = [_norm_task(t) for t in (out.get("tasks") or [])][:12]
+            tasks = [_norm_task(t) for t in (out.get("tasks") or [])][:16]
             if tasks:
                 return {"note": str(out.get("note") or "已按你的意见调整。"), "tasks": tag_resources(tasks, catalog_match(title))}
         except Exception as e:
@@ -180,7 +180,7 @@ def discuss_goal(title: str, due: str | None, today: dt.date, history: list[dict
 
 
 def _norm_task(t: dict) -> dict:
-    return {"title": str(t.get("title") or "")[:120], "est_hours": float(t.get("est_hours") or 1),
+    return {"title": str(t.get("title") or "")[:120], "est_hours": min(3.0, max(0.25, float(t.get("est_hours") or 1))),
             "due": t.get("due") or None, "resource": t.get("resource") or None}
 
 
@@ -188,7 +188,7 @@ def _decompose_stub(title: str, due: str | None, today: dt.date) -> list[dict]:
     end = dt.date.fromisoformat(due) if due else today + dt.timedelta(days=28)
     span = max(4, (end - today).days)
     n = 4
-    return [{"title": f"{title} · 第 {i+1}/{n} 段", "est_hours": 3.0,
+    return [{"title": f"{title} · 第 {i+1}/{n} 段", "est_hours": 2.0,
              "due": (today + dt.timedelta(days=span * (i + 1) // n)).isoformat(),
              "resource": None} for i in range(n)]
 
