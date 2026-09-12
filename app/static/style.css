@@ -12,6 +12,7 @@
   --canvas:#7cff6b; --email:#b388ff; --manual:#ffb020; --ai:#4dd0e1;
 }
 * { box-sizing:border-box; }
+[hidden] { display:none !important; }
 html, body { margin:0; }
 body {
   font:15px/1.55 var(--font-body); color:var(--ink-sub); letter-spacing:.01em;

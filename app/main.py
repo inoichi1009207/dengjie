@@ -573,7 +573,7 @@ def week(date: str | None = None, u: dict = Depends(current_user)):
     for i in range(7):
         dd = mon + dt.timedelta(days=i)
         days.append({"date": dd.isoformat(), "weekday": i + 1,
-                     "slots": [s for s in slots if s["day"] == i + 1 and (wk is None or not s["weeks"] or wk in s["weeks"])],
+                     "slots": [] if (_semester_start(u) and wk is None) else [s for s in slots if s["day"] == i + 1 and (wk is None or not s["weeks"] or wk in s["weeks"])],
                      "tasks": [t for t in tasks if t["status"] != "done" and (t["scheduled_date"] == dd.isoformat() or (not t["scheduled_date"] and t["due"] == dd.isoformat()))]})
     class_hours = rules.class_hours_for_week(slots, wk)
     return {"monday": mon.isoformat(), "sunday": sun.isoformat(), "week_no": wk, "days": days,
@@ -597,13 +597,14 @@ def month(year: int | None = None, month: int | None = None, u: dict = Depends(c
     start = first - dt.timedelta(days=first.weekday())
     end = last + dt.timedelta(days=6 - last.weekday())
     slots = _slots(u["id"])
+    sem_set = _semester_start(u) is not None
     tasks = [x for x in _my_tasks(u["id"]) if x["status"] != "done"]
     days = []
     day = start
     while day <= end:
         wk = rules.week_number(_semester_start(u), day)
         ds = day.isoformat()
-        cls = [s for s in slots if s["day"] == day.weekday() + 1 and (wk is None or not s["weeks"] or wk in s["weeks"])]
+        cls = [] if (sem_set and wk is None) else [s for s in slots if s["day"] == day.weekday() + 1 and (wk is None or not s["weeks"] or wk in s["weeks"])]
         days.append({"date": ds, "in_month": day.month == m, "week_no": wk, "is_today": day == t,
                      "class_slots": sum((s["slot_end"] or 0) - (s["slot_start"] or 0) + 1 for s in cls if s["slot_start"] and s["slot_end"]),
                      "classes": cls,
@@ -628,7 +629,7 @@ def today_view(u: dict = Depends(current_user)):
     t = today()
     tasks = _my_tasks(u["id"])
     wk = rules.week_number(_semester_start(u), t)
-    classes = [s for s in _slots(u["id"]) if s["day"] == t.weekday() + 1 and (wk is None or not s["weeks"] or wk in s["weeks"])]
+    classes = [] if (_semester_start(u) and wk is None) else [s for s in _slots(u["id"]) if s["day"] == t.weekday() + 1 and (wk is None or not s["weeks"] or wk in s["weeks"])]
     return {"date": t.isoformat(), "tasks": rules.today_tasks(tasks, t), "streak": rules.streak(_done_dates(u["id"]), t),
             "pending": [x for x in tasks if x["status"] == "pending"], "classes": classes, "week_no": wk}
 
