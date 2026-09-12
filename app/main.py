@@ -171,6 +171,7 @@ class TaskIn(BaseModel):
     resource: str | None = None
     scheduled_date: str | None = None
     goal_id: int | None = None
+    group_id: int | None = None
 
 
 class GoalCreate(GoalIn):
@@ -422,6 +423,10 @@ def list_tasks(status: str | None = None, u: dict = Depends(current_user)):
 def add_task(t: TaskIn, u: dict = Depends(current_user)):
     if not t.title.strip():
         raise HTTPException(400, "任务标题不能为空")
+    if t.group_id and not t.goal_id:  # 小组独立任务:不挂目标,未认领
+        if not db.row("SELECT 1 FROM group_members WHERE group_id=? AND user_id=?", (t.group_id, u["id"])):
+            raise HTTPException(403, "不在该小组")
+        return {"id": _insert_task(None, t, "manual", None, t.group_id)}
     if t.goal_id:
         g = db.row("SELECT * FROM goals WHERE id=?", (t.goal_id,))
         if not g:
@@ -941,8 +946,12 @@ def group_detail(gid: int, u: dict = Depends(current_user)):
         done = sum(1 for x in gl["tasks"] if x["status"] == "done")
         gl["progress"] = round(done / len(gl["tasks"]), 2) if gl["tasks"] else 0.0
         gl["days_left"] = (rules.d(gl["due"]) - t).days if gl["due"] else None
+    group_tasks_free = [x for x in group_tasks if not x["goal_id"]]
+    for x in group_tasks_free:
+        x["assignee"] = names.get(x["user_id"])
+    group_tasks_free.sort(key=lambda x: (x["status"] == "done", x["due"] or "9999", x["id"]))
     return {"id": g["id"], "name": g["name"], "invite_code": g["invite_code"] if g["owner_id"] == u["id"] else None,
-            "members": members, "goals": goals}
+            "members": members, "goals": goals, "group_tasks": group_tasks_free}
 
 
 # ── 静态页 ──────────────────────────────────────────────────────────────

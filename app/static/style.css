@@ -108,7 +108,17 @@ ul.tasks li.cls { border-left-color:var(--tc); } ul.tasks li.cls .t { color:var(
 label.inline { display:inline-flex; align-items:center; gap:6px; margin:0; font-size:13px; } label.inline input { width:auto; margin:0; }
 .toast { background:rgba(42,133,96,.12); border:1px solid var(--green); padding:8px 12px; margin-top:10px; color:#fff; font-size:13px; }
 .toast.warn { background:rgba(255,153,0,.10); border-color:var(--orange); }
-/* 时间轴 */
+/* 负载条 */
+.strip { display:flex; height:38px; background:rgba(0,8,6,.6); border:1px solid var(--green-border); overflow:hidden; }
+.strip .seg { position:relative; height:100%; background:var(--tc); opacity:.85; border-right:1px solid rgba(0,0,0,.5); display:flex; align-items:center; padding:0 6px; font-size:12px; color:#061008; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:6px; }
+.strip .seg.class { opacity:.55; color:#eafff3; background:repeating-linear-gradient(135deg,var(--tc) 0 6px,rgba(0,0,0,.35) 6px 8px); }
+.strip .seg.done { opacity:.35; text-decoration:line-through; }
+.strip .free { flex:1; background:transparent; color:var(--ink-dim); font-size:11px; display:flex; align-items:center; justify-content:center; }
+.strip-legend { display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; font-size:12px; color:var(--ink-dim); }
+.strip-legend i { display:inline-block; width:10px; height:10px; background:var(--tc); margin-right:4px; vertical-align:middle; }
+.strip-meta { margin-top:6px; font-family:var(--font-mono); color:var(--yellow); font-size:13px; }
+li.editing .t { display:none; } .edit-row { display:grid; grid-template-columns:1fr 90px 150px auto auto; gap:6px; flex:1; align-items:center; }
+/* 时间轴(备用,已不在页面使用) */
 .timeline { position:relative; padding-left:64px; min-height:300px; }
 .timeline .hour { position:absolute; left:0; right:0; border-top:1px dashed rgba(42,133,96,.18); font-family:var(--font-mono); font-size:11px; color:var(--ink-dim); }
 .timeline .hour span { position:absolute; left:-58px; top:-8px; }

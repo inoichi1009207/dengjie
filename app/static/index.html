@@ -48,7 +48,7 @@
       <button data-tab="settings">设置</button>
       <button data-tab="demo">演示</button>
     </nav>
-    <div class="side-foot"><span id="who" class="muted"></span><button id="logout" class="link">退出</button></div>
+    <div class="side-foot"><span id="who" class="muted"></span><button id="logout" class="small">退出登录</button></div>
   </aside>
 
   <main class="content">
@@ -77,8 +77,8 @@
           <div id="calib-panel" hidden></div>
         </div>
         <div class="card">
-          <h2>今日时间轴 <span class="muted">课按交大作息,任务填进空档</span></h2>
-          <div id="today-timeline" class="timeline"></div>
+          <h2>今日负载条 <span class="muted">每件事按小时占一块,颜色按分类</span></h2>
+          <div id="today-strip"></div>
         </div>
       </div>
     </section>
@@ -187,7 +187,7 @@
 
     <!-- 演示 -->
     <section id="tab-demo" class="tab" hidden>
-      <header class="page-head"><h1>演示脚本</h1><div class="row"><button id="demo-seed" class="primary">灌入演示数据</button><button id="demo-reset">清空我的数据</button><span id="demo-msg" class="hint"></span></div></header>
+      <header class="page-head"><h1>演示脚本</h1><div class="row"><button id="demo-seed" class="primary">灌入演示数据</button><button id="demo-reset">清空我的数据</button><button id="demo-logout">退出登录,回到封面</button><span id="demo-msg" class="hint"></span></div></header>
       <div class="card">
         <p class="hint">按 PRD 的顺序拍。「灌入演示数据」会写入一份示例课表、一个已拆解的目标、两条 Canvas 作业和两条邮件事项(待确认),你可以从任一步开始;真实课表用「接入」页上传 PDF 覆盖即可。</p>
         <ol class="steps">

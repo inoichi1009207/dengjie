@@ -111,6 +111,16 @@ class V3(unittest.TestCase):
         t = next(x for x in self.c.get("/api/tasks").json() if x["id"] == a); self.assertEqual(t["remaining_hours"], 0.5); self.assertEqual(t["est_hours"], 2.0)
         self.assertEqual(self.c.patch("/api/tasks_batch", json={"items": [{"id": 99999, "remaining_hours": 1}]}).status_code, 404)
 
+    def test_11_group_free_tasks_and_edit(self):
+        g = self.c.post("/api/groups", json={"name": "自习小组"}).json()
+        tid = self.c.post("/api/tasks", json={"title": "订自习室", "est_hours": 0.5, "group_id": g["id"]}).json()["id"]
+        d = self.c.get(f"/api/groups/{g['id']}").json()
+        self.assertEqual([x["id"] for x in d["group_tasks"]], [tid]); self.assertIsNone(d["group_tasks"][0]["assignee"])
+        self.assertEqual(self.c.post(f"/api/tasks/{tid}/claim").status_code, 200)
+        r = self.c.patch(f"/api/tasks/{tid}", json={"title": "订周三自习室", "est_hours": 1.5, "due": "2026-09-18"}).json()
+        self.assertEqual((r["title"], r["est_hours"], r["due"]), ("订周三自习室", 1.5, "2026-09-18"))
+        self.assertEqual(self.c.post("/api/tasks", json={"title": "x", "group_id": 99999}).status_code, 403)
+
     def test_08_keywords(self):
         from app import llm
         self.assertEqual(llm._keywords("共读《Analysis I》前四章"), ["Analysis I"])
