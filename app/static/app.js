@@ -265,9 +265,16 @@ function showDay(d) {
   if (d.classes.length) { const ul = el("ul", { class: "tasks" }); for (const s of d.classes) ul.append(classLi(s)); box.append(el("h3", { style: "margin-top:12px" }, "课"), ul); }
   const ul = el("ul", { class: "tasks" });
   if (!d.tasks.length) ul.append(el("li", { class: "empty" }, "这天没有任务。"));
-  for (const t of d.tasks) ul.append(taskLi(t, [
-    t.status === "confirmed" ? el("button", { class: "small primary", onclick: async () => { await api(`/api/review/${t.id}/done`, "POST"); loadCalendar(); } }, "完成") : "",
-    el("button", { class: "small link", onclick: async () => { await api(`/api/tasks/${t.id}`, "DELETE"); loadCalendar(); } }, "删")]));
+  const tstr = todayStr();
+  for (const t of d.tasks) {
+    const di = el("input", { type: "date", value: d.date, title: "腾挪到哪天" });
+    const move = async (to) => { await api(`/api/tasks/${t.id}`, "PATCH", { scheduled_date: to }); toast(`「${t.title}」已腾挪到 ${to}${t.due && to > t.due ? "(已越过截止日 " + t.due + ")" : ""}`, t.due && to > t.due); loadCalendar(); };
+    ul.append(taskLi(t, [
+      d.is_today && t.status === "confirmed" ? el("button", { class: "small primary", onclick: async () => { await api(`/api/review/${t.id}/done`, "POST"); loadCalendar(); } }, "完成") : "",
+      !d.is_today && t.status === "confirmed" ? el("button", { class: "small primary", onclick: () => move(tstr) }, "腾挪到今天") : "",
+      t.status === "confirmed" ? el("span", { class: "row", style: "margin:0;gap:4px" }, di, el("button", { class: "small", onclick: () => { if (di.value && di.value !== d.date) move(di.value); } }, "腾挪到")) : "",
+      el("button", { class: "small link", onclick: async () => { await api(`/api/tasks/${t.id}`, "DELETE"); loadCalendar(); } }, "删")]));
+  }
   box.append(el("h3", {}, "任务"), ul);
   const ti = el("input", { placeholder: "给这天加一件事" }), hi = el("input", { type: "number", step: "0.5", value: "1" });
   box.append(el("div", { class: "row" }, ti, hi, el("button", { class: "small primary", onclick: async () => { if (!ti.value.trim()) return; await api("/api/tasks", "POST", { title: ti.value.trim(), est_hours: +hi.value || 1, due: d.date, scheduled_date: d.date }); loadCalendar(); } }, "添加")));
