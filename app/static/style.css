@@ -4,8 +4,8 @@
   --green:#2a8560; --green-bright:#4b9b75; --green-border:rgba(42,133,96,.28); --green-glow:rgba(42,133,96,.14);
   --yellow:#ffcc00; --orange:#ff9900; --red:#ff6600;
   --ink:#ffffff; --ink-sub:#d5dcd8; --ink-dim:#8a9a9a;
-  --font-title:'Orbitron','Rajdhani','PingFang SC','Microsoft YaHei',sans-serif;
-  --font-body:'Rajdhani','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+  --font-title:'Share Tech Mono','Cascadia Mono','Consolas','Microsoft YaHei',monospace;
+  --font-body:'Share Tech Mono','Cascadia Mono','Consolas','Microsoft YaHei',monospace;
   --font-mono:'Share Tech Mono',Consolas,monospace;
   /* 分类色(鲜艳,给任务/课程用) */
   --c0:#ffb020; --c1:#ff6b6b; --c2:#4dd0e1; --c3:#b388ff; --c4:#7cff6b; --c5:#ff8ae2; --c6:#ffd166; --c7:#5ec8ff;
@@ -184,3 +184,6 @@ table.grid th { color:var(--ink); background:var(--panel-hi); font-weight:600; f
 .topbar { position:fixed; top:10px; right:16px; z-index:50; background:var(--panel); border:1px solid var(--green-border); padding:6px 10px; display:flex; gap:8px; align-items:center; font-size:13px; }
 .topbar b { color:var(--yellow); font-family:var(--font-mono); }
 @media (max-width:900px) { .topbar { position:static; margin-bottom:10px; } }
+
+.goal.collapsed ul.tasks, .goal.collapsed .add-inline { display:none; }
+.row.between { justify-content:space-between; }

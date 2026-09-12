@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>登阶</title>
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -15,12 +15,12 @@
     <div class="hero">
       <div class="logo">登阶</div>
       <h1>让长期目标,<br>真正走进你的每一周。</h1>
-      <p class="lead">刷完一门公开课、期中前读完一本书、把绩点稳住——这些目标之所以停在开学那天,不是因为你不努力,而是它们从没和你的课表、作业、通知放在同一本账上。</p>
+      <p class="lead">刷完一门公开课、期中前读完一本书、把绩点稳住——这些目标停在开学那天,是因为它们从没和你的课表、作业、通知放在同一本账上。</p>
       <ul class="values">
-        <li><b>懂你的课业</b><span>课表、Canvas 作业、学校邮件和长期目标进同一本账,一眼看清这周排不排得下。</span></li>
-        <li><b>把愿望变成任务</b><span>说一句目标,AI 拆成带时长和截止日的具体任务,你改过、确认了才算数。</span></li>
-        <li><b>每天一次回声</b><span>打开就知道今天做什么;做不完也没关系,登阶帮你把明天排轻一点。</span></li>
-        <li><b>和同伴一起登阶</b><span>邀请码建组,共同目标各自认领,看得见彼此的进度。</span></li>
+        <li><b>懂你的课业</b><span>课表、Canvas 作业、学校邮件和长期目标进同一本账。</span></li>
+        <li><b>把愿望变成任务</b><span>说一句目标,AI 拆成带时长和截止日的任务,你确认了才算数。</span></li>
+        <li><b>每天一次回声</b><span>打开就知道今天做什么;太累了就挪到明天。</span></li>
+        <li><b>和同伴一起登阶</b><span>邀请码建组,共同目标各自认领。</span></li>
       </ul>
     </div>
     <div class="card auth-card">
@@ -42,11 +42,9 @@
       <button data-tab="today" class="active">今日 <span id="nav-pending" class="badge" hidden></span></button>
       <button data-tab="goals">目标</button>
       <button data-tab="calendar">日历</button>
-      <button data-tab="ddl">DDL</button>
       <button data-tab="integrations">接入</button>
       <button data-tab="groups">小组</button>
       <button data-tab="settings">设置</button>
-      <button data-tab="demo">演示</button>
     </nav>
     <div class="side-foot"><span id="who" class="muted"></span><button id="logout" class="small">退出登录</button></div>
   </aside>
@@ -54,6 +52,7 @@
   <main class="content">
     <div class="topbar"><span class="muted">当前账号</span> <b id="who2"></b> <button id="logout2" class="small">退出</button></div>
     <p id="toast" class="toast" hidden></p>
+
     <!-- 今日 -->
     <section id="tab-today" class="tab">
       <header class="page-head"><h1>今日 <span id="today-date" class="muted"></span></h1><span class="pill">已连续 <b id="streak">0</b> 天</span></header>
@@ -64,20 +63,18 @@
         <div class="card">
           <h2>今天的课 <span id="today-week" class="muted"></span></h2>
           <ul id="today-classes" class="tasks"></ul>
-          <h3 style="margin-top:12px">今日负载条 <span class="muted">课与任务共用日承载力,每件事按小时占一块</span></h3>
+          <h3 style="margin-top:12px">今日负载</h3>
           <div id="today-strip"></div>
-          <h2 style="margin-top:14px">今天要做的任务 <span class="muted">长期目标请到「目标」页立,拆出的任务会按日期出现在这里</span></h2>
+          <h2 style="margin-top:14px">今天要做的任务</h2>
           <ul id="today-list" class="tasks"></ul>
           <form id="quick-add" class="quick-add">
             <label>任务<input id="qa-title" placeholder="比如「复习线代第 2 章」" required></label>
-            <label>预计小时(≤3)<input id="qa-hours" type="number" step="0.5" min="0.5" max="3" value="1"></label>
-            <label>截止日<input id="qa-due" type="date"></label>
+            <label>⏰ 小时(≤3)<input id="qa-hours" type="number" step="0.5" min="0.5" max="3" value="1"></label>
+            <label>⌛ 截止<input id="qa-due" type="date"></label>
             <button class="primary">添加任务</button>
           </form>
-          <p class="tired-row">今天状态不好? <button id="too-tired" class="link warn-link">让登阶把明天排轻一点 →</button> <span class="muted">· 日承载力 <b id="daily-cap" class="num"></b> 小时(课 + 任务共用)</span></p>
-          <div id="tired-preview" class="preview" hidden></div>
           <div id="spare-card" class="preview" hidden></div>
-          <p class="tired-row"><button id="calib-toggle" class="link">校准今天的估时 →</button> <span class="muted">复盘时把今天各件事的剩余小时改准,时间账才准</span></p>
+          <p class="tired-row"><button id="calib-toggle" class="link">校准今天的估时 →</button></p>
           <div id="calib-panel" hidden></div>
           <div class="review-box">
             <h2>每日复盘</h2>
@@ -89,10 +86,11 @@
             <textarea id="review-note" rows="2" placeholder="一句话复盘:今天做得怎么样,明天想改什么"></textarea>
             <div class="row"><button id="review-save" class="primary">记下今天</button><span id="review-msg" class="hint"></span></div>
             <p id="review-ai" class="ai-line" hidden></p>
+            <div id="review-cap" class="preview" hidden></div>
           </div>
         </div>
         <div class="card">
-          <h2>近期截止 <span class="muted">七天内到期的任务</span></h2>
+          <div class="row between"><h2>⌛ 近期截止</h2><button id="ddl-open" class="small">查询全部截止时间</button></div>
           <ul id="today-upcoming" class="tasks"></ul>
         </div>
       </div>
@@ -110,8 +108,8 @@
         </div>
         <p id="g-msg" class="hint"></p>
         <div id="g-preview" hidden>
-          <table class="grid"><thead><tr><th>任务</th><th style="width:90px">估时(h)</th><th style="width:150px">建议截止</th><th>资源</th><th style="width:40px"></th></tr></thead><tbody id="g-rows"></tbody></table>
-          <div class="row discuss"><input id="g-feedback" class="grow" placeholder="和 AI 讨论:比如「太多了,合并成 5 个」「每周留一次复习」「第 3 条换成做题」"><button id="g-discuss" class="ghost">让 AI 改</button></div>
+          <table class="grid"><thead><tr><th>任务</th><th style="width:90px">⏰ 小时</th><th style="width:150px">⌛ 截止</th><th>资源</th><th style="width:40px"></th></tr></thead><tbody id="g-rows"></tbody></table>
+          <div class="row discuss"><input id="g-feedback" class="grow" placeholder="和 AI 讨论:「太多了,合并成 5 个」「每周留一次复习」"><button id="g-discuss" class="ghost">让 AI 改</button></div>
           <p id="g-note" class="hint"></p>
           <div class="row"><button id="g-add-row" class="ghost">加一行</button><button id="g-confirm" class="primary">确认,进入任务清单</button></div>
         </div>
@@ -137,9 +135,9 @@
       <div id="cal-day" class="card cal-wrap" hidden></div>
     </section>
 
-    <!-- DDL -->
+    <!-- DDL(从今日「查询全部截止时间」进入) -->
     <section id="tab-ddl" class="tab" hidden>
-      <header class="page-head"><h1>DDL</h1></header>
+      <header class="page-head"><h1>⌛ 全部截止时间</h1><button id="ddl-back" class="ghost">← 返回今日</button></header>
       <div id="ddl-due" class="card" hidden></div>
       <div class="two-col">
         <div class="card"><h2>目标倒计时</h2><ul id="ddl-goals" class="tasks"></ul></div>
@@ -150,23 +148,16 @@
     <!-- 接入 -->
     <section id="tab-integrations" class="tab" hidden>
       <header class="page-head"><h1>接入你的课业</h1></header>
-      <div class="card">
-        <h2>一键导入 <span class="muted">把提示词交给你自己的 AI 助手,它回来的 JSON 粘在这里</span></h2>
-        <p class="hint">Claude Code、Codex、sjtu-agent 等都行。提示词里写清了课表、Canvas 作业、邮箱待办三部分怎么取、按什么格式回。密码只经过你自己的工具。做不到的部分助手会留空,其余照常导入;任务一律先进「待确认」。</p>
-        <div class="row"><button id="prompt-copy" class="primary">复制提示词</button><a href="/api/prompt" target="_blank" class="link-a">查看提示词</a><a href="/api/sample-bundle" target="_blank" class="link-a">范例 JSON</a><span id="prompt-msg" class="hint"></span></div>
-        <textarea id="bundle-text" rows="5" placeholder='粘贴 AI 返回的 JSON,形如 {"schedule":[...],"canvas_tasks":[...],"mail_tasks":[...]}'></textarea>
-        <div class="row"><button id="bundle-import" class="primary">导入</button><label class="inline"><input id="demo-mode" type="checkbox"> 演示模式:点「导入」直接灌示范数据</label><span id="bundle-msg" class="hint"></span></div>
-      </div>
       <div id="pending-panel" class="card" hidden>
-        <h2>待确认 <span class="muted">导入的作业和邮件事项,点「计入」才进任务清单</span></h2>
+        <h2>待确认</h2>
         <ul id="pending-list-int" class="tasks"></ul>
       </div>
       <div class="int-grid">
         <div class="card">
           <h2>课表 <span id="int-sched-status" class="status"></span></h2>
-          <p class="hint">导入课表:教学信息网导出的 PDF、课表截图(png/jpg)、Markdown 或文本文件都行,AI 会自己读;也可以把课表文字直接粘贴到下面;习惯用工具的同学可以跑 <code>tools/dengjie_sync.py</code> 一键脚本,或把提示词交给自己的 AI 助手(见上方一键导入)。保存后本周可投入按「日承载力 10 × 7 − 课时」自动更新。</p>
-          <div class="row"><input id="sch-file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.md,.txt,.csv,image/*,application/pdf,text/plain,text/markdown"><span id="sch-file-msg" class="hint"></span></div>
-          <textarea id="sch-text" rows="6" placeholder="或粘贴课表文字"></textarea>
+          <label>上传课表截图 / PDF / 文字文件<input id="sch-file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.md,.txt,.csv,image/*,application/pdf,text/plain,text/markdown"></label>
+          <span id="sch-file-msg" class="hint"></span>
+          <textarea id="sch-text" rows="5" placeholder="或粘贴课表文字"></textarea>
           <div class="row"><button id="sch-parse" class="primary">解析</button><span id="sch-msg" class="hint"></span></div>
           <div id="sch-preview" hidden>
             <table class="grid"><thead><tr><th>课程</th><th style="width:60px">星期</th><th style="width:80px">节次</th><th>周次</th><th>地点</th><th style="width:40px"></th></tr></thead><tbody id="sch-rows"></tbody></table>
@@ -175,15 +166,13 @@
         </div>
         <div class="card">
           <h2>Canvas 作业 <span id="int-canvas-status" class="status"></span></h2>
-          <p class="hint">拉取 Canvas 上的待办作业进「待确认」区。演示阶段用团队账号的访问令牌;正式版按 Canvas 规范走授权登录。</p>
-          <label>访问令牌 <input id="int-canvas-token" type="password" placeholder="留空则用服务器上的演示令牌"></label>
+          <label>访问令牌 <input id="int-canvas-token" type="password" placeholder="留空则用演示令牌"></label>
           <div class="row"><button id="int-canvas-save" class="ghost">保存令牌</button><button id="int-canvas-import" class="primary">拉取作业</button><span id="canvas-msg" class="hint"></span></div>
         </div>
         <div class="card">
           <h2>交大邮箱 <span id="int-mail-status" class="status"></span></h2>
-          <p class="hint">读取最近 7 天邮件,本地去掉地址、电话、链接和引用后,由 AI 抽出需要动手的事项进「待确认」区。演示只用团队测试邮箱。</p>
           <label>邮箱账号 <input id="int-mail-user" placeholder="jAccount 用户名"></label>
-          <label>密码 <input id="int-mail-pass" type="password" placeholder="仅演示账号;留空则用服务器配置"></label>
+          <label>密码 <input id="int-mail-pass" type="password" placeholder="留空则用演示账号"></label>
           <div class="row"><button id="int-mail-save" class="ghost">保存</button><button id="int-mail-import" class="primary">读取邮件</button><span id="mail-msg" class="hint"></span></div>
         </div>
       </div>
@@ -204,23 +193,6 @@
       <div id="grp-detail" hidden></div>
     </section>
 
-    <!-- 演示 -->
-    <section id="tab-demo" class="tab" hidden>
-      <header class="page-head"><h1>演示脚本</h1><div class="row"><button id="demo-seed" class="primary">灌入演示数据</button><button id="demo-reset">清空我的数据</button><button id="demo-logout">退出登录,回到封面</button><span id="demo-msg" class="hint"></span></div></header>
-      <div class="card">
-        <p class="hint">按 PRD 的顺序拍。「灌入演示数据」会写入一份示例课表、一个已拆解的目标、两条 Canvas 作业和两条邮件事项(待确认),你可以从任一步开始;真实课表用「接入」页上传 PDF 覆盖即可。</p>
-        <ol class="steps">
-          <li><div class="t"><b>立目标,AI 拆解,和 AI 讨论一轮</b><span>目标页输入「期中前刷完 MIT 18.01 前四单元」→ AI 拆解 → 在讨论栏写「合并成 5 个,每周留一次复习」→ 确认入池。</span></div><button class="small" data-go="goals">去目标页</button></li>
-          <li><div class="t"><b>导入课表</b><span>接入页上传教学信息网导出的 PDF(或粘贴文字)→ 解析 → 保存。保存后本周可投入自动变成 10 × 7 − 课时。</span></div><button class="small" data-go="integrations">去接入页</button></li>
-          <li><div class="t"><b>拉作业、读邮件,确认入账</b><span>接入页点「拉取作业」「读取邮件」(或一键导入粘 JSON)→ 待确认面板里逐条「计入」,看时间账的数字变化。</span></div><button class="small" data-go="integrations">去接入页</button></li>
-          <li><div class="t"><b>看这周的账</b><span>今日页顶部:「这周还有 N 小时空余 / 排多了 N 小时」。日历页默认七列周视图,需要时再切月历。</span></div><button class="small" data-go="calendar">去日历</button></li>
-          <li><div class="t"><b>每日复盘</b><span>今日页对任务点「完成」「推迟」;然后点「让登阶把明天排轻一点」,看预览,点「就这么办」。</span></div><button class="small" data-go="today">去今日</button></li>
-          <li><div class="t"><b>DDL 与结算</b><span>DDL 页看倒计时;到期目标点「达成了 / 延期到 / 放弃」。</span></div><button class="small" data-go="ddl">去 DDL</button></li>
-          <li><div class="t"><b>小组共进</b><span>建组拿邀请码,另一个账号加入;立共同目标「共读《线性代数应该这样学》前四章」,各自认领任务,看完成率。</span></div><button class="small" data-go="groups">去小组</button></li>
-        </ol>
-      </div>
-    </section>
-
     <!-- 设置 -->
     <section id="tab-settings" class="tab" hidden>
       <header class="page-head"><h1>设置</h1></header>
@@ -228,15 +200,13 @@
         <div class="card">
           <h2>承载力与学期</h2>
           <label>本周可投入任务的时长(小时) <input id="s-hours" type="number" min="0" step="0.5"></label>
-          <p class="hint">日承载力 10 小时(课 + 任务共用)。保存课表后自动按「10 × 7 − 课时」算;也可以手动改,或 <button id="s-adopt" class="link">按课表重算</button></p>
+          <p class="hint">日承载力 10 小时 × 7 − 课时;<button id="s-adopt" class="link">按课表重算</button></p>
           <label>学期开始日 <input id="s-start" type="date"></label>
-          <p class="hint">用于算教学周,默认 2026-09-13。</p>
           <div class="row"><button id="s-save" class="primary">保存</button><span id="s-msg" class="hint"></span></div>
           <p class="hint">AI 通道:<span id="s-llm"></span></p>
         </div>
         <div class="card">
           <h2>每日提醒邮件</h2>
-          <p class="hint">每天定时把今日清单和本周时间账发到你的交大邮箱(用「接入」页配置的邮箱账号发给自己)。</p>
           <label>提醒时间 <select id="r-hour"><option value="">关闭</option></select></label>
           <div class="row"><button id="r-save" class="primary">保存</button><button id="r-send">现在发一封</button><span id="r-msg" class="hint"></span></div>
           <p class="hint" id="r-last"></p>
@@ -247,6 +217,18 @@
           <label>原密码 <input id="pw-old" type="password" autocomplete="current-password"></label>
           <label>新密码 <input id="pw-new" type="password" autocomplete="new-password" placeholder="至少 4 位"></label>
           <div class="row"><button id="pw-save" class="primary">修改密码</button><button id="acct-logout">退出登录</button><span id="pw-msg" class="hint"></span></div>
+        </div>
+        <div class="card">
+          <h2>演示</h2>
+          <div class="row"><button id="demo-seed" class="primary">灌入演示数据</button><button id="demo-reset" class="danger">清空我的数据</button><span id="demo-msg" class="hint"></span></div>
+          <ol class="steps">
+            <li><div class="t"><b>立目标,AI 拆解,和 AI 讨论一轮</b></div><button class="small" data-go="goals">去目标页</button></li>
+            <li><div class="t"><b>上传课表截图或文件</b></div><button class="small" data-go="integrations">去接入页</button></li>
+            <li><div class="t"><b>拉作业、读邮件,待确认里逐条计入</b></div><button class="small" data-go="integrations">去接入页</button></li>
+            <li><div class="t"><b>看本周的账与周视图</b></div><button class="small" data-go="calendar">去日历</button></li>
+            <li><div class="t"><b>每日复盘:完成 / 太累了 / 推迟,记下今天</b></div><button class="small" data-go="today">去今日</button></li>
+            <li><div class="t"><b>小组:邀请码、共同目标、认领</b></div><button class="small" data-go="groups">去小组</button></li>
+          </ol>
         </div>
       </div>
     </section>
