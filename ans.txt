@@ -1,0 +1,80 @@
+登阶 · 给第二个 demo 的对齐说明(2026-09-12)
+
+1. 技术栈
+   后端:Python 3.12 + FastAPI,单进程,无框架 ORM,直接 sqlite3。
+   数据库:SQLite 单文件(默认项目根 dengjie.db,环境变量 DENGJIE_DB 可改),表见 app/db.py。
+   前端:纯 HTML + JavaScript(无框架、无打包),由 FastAPI 静态托管;PDF 在浏览器里用 pdf.js(cdnjs)抽文本。
+   大模型:DeepSeek 官方(OpenAI 兼容),app/llm.py;没配 key 走桩,功能照常。
+
+2. 启动与端口
+   pip install -r requirements.txt;run.bat(或 python -m uvicorn app.main:app --port 8000);http://localhost:8000
+   key:项目根 apikey.txt 或环境变量 DEEPSEEK_API_KEY / LLM_API_KEY。测试:python -m unittest -q(全用桩,不联网)。
+   演示固定「今天」:环境变量 DENGJIE_TODAY=YYYY-MM-DD。
+
+3. 接口清单(全部 JSON;除注明外都要登录 cookie)
+   鉴权
+     POST /api/register  {username,password} → {ok,user_id},设 cookie dj_session
+     POST /api/login     {username,password} → {ok,user_id,upload_token}(upload_token 10 分钟一次性,给外部上传用)
+     POST /api/logout
+     GET  /api/me        → {id,username,weekly_hours,semester_start,has_canvas_token,has_mail,mail_user,llm}
+     PUT  /api/settings  {weekly_hours?,semester_start?,canvas_token?,mail_user?,mail_pass?} → 同 /api/me
+     POST /api/settings/adopt_suggested → {weekly_hours}(按课表 42−课时)
+     POST /api/settings/reduce_weekly   → {weekly_hours}(×0.8)
+   目标与任务
+     POST /api/goals/decompose {title,due?} → {tasks:[{title,est_hours,due,resource}],llm}(只预览,不落库)
+     POST /api/goals/discuss   {title,due?,history:[{role,content}],feedback} → {note,tasks,llm}(多轮讨论,历史由前端持有)
+     POST /api/goals   {title,due?,tasks:[TaskIn],group_id?} → {goal_id,task_ids}(任务直接 confirmed)
+     GET  /api/goals   → [{...goal,status(active|achieved|dropped),tasks:[...]}]
+     POST /api/goals/{id}/settle {action:achieved|extend|drop,new_due?} → goal
+     GET  /api/ddl     → {today,due_goals[],upcoming_goals[],tasks[]}(带 days_left)
+     GET  /api/tasks?status=pending|confirmed|done
+     POST /api/tasks   {title,est_hours,due?,scheduled_date?,goal_id?} → {id}(goal 属小组则任务归小组、未认领)
+     PATCH /api/tasks/{id} {title?,est_hours?,remaining_hours?,due?,scheduled_date?,status?}
+     DELETE /api/tasks/{id}
+     POST /api/tasks/{id}/confirm(pending→confirmed) POST /api/tasks/{id}/claim(小组任务认领)
+   课表与视图
+     POST /api/schedule/parse  {text} → {slots:[{name,teacher,location,day1-7,slot_start,slot_end,weeks[]}],llm}
+     POST /api/schedule/upload multipart file(pdf/txt/csv)→ {text,slots,llm}(服务器解析 PDF 需 pypdf,否则 501;前端先用 pdf.js)
+     PUT  /api/schedule {slots} → {count,weekly_hours}(覆盖全部课表,并自动采用建议时长)
+     GET  /api/schedule
+     GET  /api/week?date= → {monday,sunday,week_no,days[{date,slots,tasks}],class_hours,suggested_weekly_hours,gap{committed_hours,weekly_hours,gap},overdue}
+     GET  /api/month?year=&month= → {days[{date,in_month,week_no,is_today,class_slots,classes,tasks,overdue}],week{...同上}}
+   今日与复盘
+     GET  /api/today → {date,tasks,streak,pending}
+     POST /api/review/{id}/done | /postpone
+     POST /api/review/too_tired/preview → {tomorrow,tomorrow_cap,moves[],overflow[],sentence,advice}
+     POST /api/review/too_tired/apply {moves,overflow}
+   校园数据
+     POST /api/canvas/import → {fetched,added}(用用户令牌或 DEMO_CANVAS_TOKEN;任务进 pending)
+     POST /api/mail/import   → {fetched,found,added}(IMAP mail.sjtu.edu.cn:993;任务进 pending)
+     POST /api/import/bundle {text} → {schedule,canvas_tasks,mail_tasks,skipped,weekly_hours?}(AI 助手回的 JSON,一次导三样)
+     POST /api/sync  Header Authorization: Bearer <upload_token>  {schedule,canvas_token?} → {ok,slots,weekly_hours}(登录接口发的一次性令牌,10 分钟)
+     GET  /api/integrations/status → {schedule_slots,canvas{configured,tasks},mail{configured,user,tasks},llm}
+     GET  /api/prompt → text/plain(一键提示词)
+   小组
+     POST /api/groups {name} → {id,invite_code,invite_expires}(码 24 小时)
+     POST /api/groups/join {code}   GET /api/groups
+     GET  /api/groups/{id} → {members[{id,username,claimed,done,completion_rate,hours_done,streak}],goals[{...,tasks[assignee],progress,days_left}],invite_code(仅组长)}
+
+4. 账号体系
+   users(id,username,pw_hash(scrypt),salt,weekly_hours,semester_start,canvas_token,mail_user,mail_pass,...)
+   sessions(token,user_id,expires 30 天):注册/登录时服务端生成随机 token,写 HttpOnly cookie dj_session;每个请求查表校验。
+   upload_tokens(token,user_id,expires 10 分钟):/api/login 顺带发一个,供外部脚本 POST /api/sync 用,单次消费。
+   没有 JWT,没有 OAuth。小组:groups/group_members,邀请码随机 8 hex、24 小时。
+
+5. 校园数据「独立通路」
+   - 同一个 FastAPI 进程内的模块:app/canvas.py(Canvas REST,Bearer 令牌)、app/mail.py(IMAP + 清洗 + 抽取)。不是独立服务。
+   - 对外接口:上面「校园数据」那组。另有一条「不经服务器」的路:用户把 tools/PROMPT.md 交给自己的 AI 助手,助手回 JSON,用户粘到 /api/import/bundle。
+   - 校园来源的任务一律 status=pending 进「待确认区」,用户点 /confirm 才入池计入时间账;课表是覆盖写入,不走待确认。
+   - 凭据:Canvas 令牌与邮箱账号密码存 users 表,SQLite 明文(演示阶段;PRD 约定只用团队演示账号,正式版 Canvas 走 OAuth、邮箱不接真实用户)。也可不存库,走环境变量 DEMO_CANVAS_TOKEN / DEMO_MAIL_USER / DEMO_MAIL_PASS。
+     邮件原文只在内存,清洗(去邮箱地址/电话/URL/引用/签名)后才送模型;错误信息只回类型名不回原文;凭据不打日志。API key 在 apikey.txt(已 gitignore)或环境变量。
+   - 演示跑在哪:一台队员电脑跑 run.bat(本地),或部署到公网(Dockerfile / render.yaml 已备,最终计划放 KliniK 那台服务器)。同步器 tools/dengjie_sync.py 已废弃不用。
+
+6. 现在能跑通的流程
+   注册 → 填本周可投入 →(目标)一句话 → AI 拆解 → 和 AI 多轮讨论 → 确认入池 →(接入)上传课表 PDF 或粘贴文字或粘 AI 助手回的 JSON → 保存,可投入自动改为 42−课时 →(今日)时间账「这周还有 N 小时空余 / 排多了 N 小时」→ 完成 / 推迟 / 太累了(预览后生效)→(日历)月视图 →(DDL)倒计时,到期结算 达成/延期/放弃 →(小组)建组、邀请码、共同目标加任务、认领、完成率只算共同目标。
+   已用真实 DeepSeek 验证:拆解、课表文字解析。未用真实账号验证:Canvas 拉取、邮箱读取(代码按 sjtu-agent 的协议写)。
+
+7. 合并建议
+   服务间调用,不做代码合并。理由:两边栈和数据模型都不一样,12 小时内合并等于重写。
+   做法:第二个 demo 把登阶当后端用——同源部署时直接调上面的 /api/*(cookie 鉴权);跨域时我这边加 CORS 白名单 + 用 /api/login 返回的 token 走 Authorization 头(半小时的活)。
+   反过来如果第二个 demo 是数据源(比如它拿到了课表/作业),按 /api/import/bundle 的 JSON 格式塞给我即可,不用改任何一边的代码。

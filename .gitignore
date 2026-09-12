@@ -1,0 +1,9 @@
+apikey.txt
+.env
+*.db
+*.db-*
+__pycache__/
+smoke.log
+sync_result.json
+mima.txt
+*.txt.bak

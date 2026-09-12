@@ -1,0 +1,23 @@
+# Render 一键部署:推到 GitHub 后在 Render 选 Blueprint。
+# 免费实例文件系统不持久(重新部署后 SQLite 清空),路演演示可接受;要持久化换付费实例并启用下面的 disk。
+services:
+  - type: web
+    name: dengjie
+    runtime: docker
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: DEEPSEEK_API_KEY
+        sync: false          # 在 Render 控制台手填,不进仓库
+      - key: DEMO_CANVAS_TOKEN
+        sync: false
+      - key: DEMO_MAIL_USER
+        sync: false
+      - key: DEMO_MAIL_PASS
+        sync: false
+      - key: DENGJIE_DB
+        value: /data/dengjie.db
+    # disk:                  # 付费实例才可用
+    #   name: data
+    #   mountPath: /data
+    #   sizeGB: 1
