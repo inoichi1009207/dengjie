@@ -52,10 +52,59 @@ _DECOMPOSE_SYS = (
 )
 
 
-def decompose_goal(title: str, due: str | None, today: dt.date) -> list[dict]:
+def _keywords(title: str) -> list[str]:
+    """从目标里挑值得联网查一下的对象:书名号内容、英文专有名词、课程编号。"""
+    ks = re.findall(r"[《〈]([^》〉]{2,60})[》〉]", title)
+    ks += re.findall(r"\b(?:MIT|Stanford|CS|EE|Math)?\s?\d{2,3}\.\d{2,3}[A-Z]*\b", title)
+    ks += re.findall(r"\b[A-Z][A-Za-z0-9+#.-]{2,}(?:\s+[A-Z][A-Za-z0-9+#.-]{1,}){0,4}\b", title)
+    seen, out = set(), []
+    for k in ks:
+        k = k.strip()
+        if k and k.lower() not in seen:
+            seen.add(k.lower()); out.append(k)
+    # 去掉被更长关键词包含的短词(「Analysis」⊂「Analysis I」)
+    out = [k for k in out if not any(k != o and k.lower() in o.lower() for o in out)]
+    return out[:3]
+
+
+def enrich(title: str, timeout: float = 6.0) -> list[dict]:
+    """联网查关键词(维基百科 REST 摘要,英文优先、中文兜底),返回 [{term, title, extract, url}]。查不到就空;网络错误不抛。"""
+    import requests
+    out = []
+    for term in _keywords(title):
+        hit = None
+        for lang, q in (("en", f'"{term}" textbook'), ("en", term), ("zh", term)):
+            try:
+                s = requests.get(f"https://{lang}.wikipedia.org/w/api.php",
+                                 params={"action": "query", "list": "search", "srsearch": q, "srlimit": 3, "format": "json"},
+                                 headers={"User-Agent": "dengjie/0.1"}, timeout=timeout).json()
+                for item in (s.get("query") or {}).get("search") or []:
+                    page, snippet = item.get("title") or "", re.sub(r"<[^>]+>", "", item.get("snippet") or "")
+                    # 命中判据:页面标题或摘要片段里得真出现这个词,避免「Analysis I」对到「Analyser」
+                    if term.lower() in page.lower() or term.lower() in snippet.lower():
+                        r = requests.get(f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/{requests.utils.quote(page)}",
+                                         headers={"User-Agent": "dengjie/0.1"}, timeout=timeout).json()
+                        extract = (r.get("extract") or "").strip()
+                        if extract:
+                            hit = {"term": term, "title": r.get("title") or page, "extract": extract[:600],
+                                   "url": (r.get("content_urls") or {}).get("desktop", {}).get("page")}
+                            break
+                if hit:
+                    break
+            except Exception:
+                continue
+        if hit:
+            out.append(hit)
+    return out
+
+
+def decompose_goal(title: str, due: str | None, today: dt.date, context: list[dict] | None = None) -> list[dict]:
     if available():
         try:
-            out = _chat_json(_DECOMPOSE_SYS, f"今天 {today.isoformat()};目标:{title};截止:{due or '未定'}")
+            ctx = ""
+            if context:
+                ctx = "\n参考资料(联网查到,可据此把任务写具体,如按章节/单元拆):\n" + "\n".join(f"- {c['title']}:{c['extract'][:400]}" for c in context)
+            out = _chat_json(_DECOMPOSE_SYS, f"今天 {today.isoformat()};目标:{title};截止:{due or '未定'}{ctx}")
             tasks = out.get("tasks") or []
             if tasks:
                 return [_norm_task(t) for t in tasks][:12]
@@ -114,12 +163,29 @@ def _decompose_stub(title: str, due: str | None, today: dt.date) -> list[dict]:
 # ── 课表解析(路线 1:粘贴文字)────────────────────────────────────────────
 
 _SCHEDULE_SYS = (
-    "把用户粘贴的交大课表文字解析成 JSON:{\"slots\":[{\"name\":str,\"teacher\":str|null,\"location\":str|null,"
-    "\"day\":1-7,\"slot_start\":int,\"slot_end\":int,\"weeks\":[int]}]}。"
-    "day 1=周一;节次如「3-4节」→ slot_start 3, slot_end 4;周次「1-16周」展开成列表,「单/双」只取奇/偶周。解析不出的行跳过。"
+    "把用户给的交大课表(可能是 PDF 抽出的文字、Markdown 表格、OCR 识别的截图文字、或手打的行)解析成 JSON:"
+    "{\"slots\":[{\"name\":str,\"teacher\":str|null,\"location\":str|null,\"day\":1-7,\"slot_start\":int,\"slot_end\":int,\"weeks\":[int]}]}。"
+    "规则:day 1=周一…7=周日;节次「3-4节」→ slot_start 3, slot_end 4,「5-8节连上」→ 5 到 8;"
+    "周次「1-16周」展开成列表,「单」只取奇数周、「双」只取偶数周,「1-8,10-16周」合并;"
+    "Markdown 表格里一格可能含多行(课名/周次/地点/教师),按表头的星期列和行首的节次确定 day 与节次;"
+    "同一门课在不同天各出一条;OCR 文字有错别字时按常识纠正课名;解析不出的内容跳过,不要编造。"
 )
 
 _DAY = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "日": 7, "天": 7}
+
+
+def merge_adjacent(slots: list[dict]) -> list[dict]:
+    """同一天、同课名、同周次、节次相邻(如 5-6 与 7-8)的记录合并成一条(5-8),避免表格分行造成的拆分。"""
+    out: list[dict] = []
+    for s in sorted(slots, key=lambda x: (x["day"], x["name"], x["slot_start"])):
+        last = out[-1] if out else None
+        if last and last["day"] == s["day"] and last["name"] == s["name"] and last["weeks"] == s["weeks"] \
+                and s["slot_start"] == last["slot_end"] + 1:
+            last["slot_end"] = s["slot_end"]
+            last["location"] = last["location"] or s.get("location"); last["teacher"] = last["teacher"] or s.get("teacher")
+        else:
+            out.append(dict(s))
+    return out
 
 
 def parse_schedule_text(text: str) -> list[dict]:
@@ -128,10 +194,10 @@ def parse_schedule_text(text: str) -> list[dict]:
             out = _chat_json(_SCHEDULE_SYS, text[:8000])
             slots = [s for s in (out.get("slots") or []) if s.get("name") and s.get("day")]
             if slots:
-                return [_norm_slot(s) for s in slots]
+                return merge_adjacent([_norm_slot(s) for s in slots])
         except Exception as e:
             print("[llm] parse_schedule failed:", e)
-    return parse_schedule_regex(text)
+    return merge_adjacent(parse_schedule_regex(text))
 
 
 def _norm_slot(s: dict) -> dict:

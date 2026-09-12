@@ -120,6 +120,42 @@ def too_tired_plan(tasks: Iterable[dict], today: dt.date, daily_hours: float) ->
             "tomorrow_titles": [m["title"] for m in moves if m["to"] == tomorrow.isoformat()]}
 
 
+def plan_days(tasks: Iterable[dict], today: dt.date, daily_cap: float, horizon_days: int = 14,
+              class_hours_by_date: dict[str, float] | None = None) -> dict:
+    """自动排程:把已确认未完成任务摊到今天起 horizon 天内。
+    规则:截止日最近优先;每天容量 = daily_cap − 当天课时(不低于 1 小时);任务可跨天拆块(每块 ≤ 3h);
+    不排到截止日之后;排不下的保留在截止日并进 overflow。返回 {assign:{task_id: date}, overflow:[{id,title,short}]}。"""
+    cbd = class_hours_by_date or {}
+    days = [today + dt.timedelta(days=i) for i in range(horizon_days)]
+    cap = {dd: max(1.0, daily_cap - float(cbd.get(dd.isoformat(), 0.0))) for dd in days}
+    load = {dd: 0.0 for dd in days}
+    assign, overflow = {}, []
+    todo = [t for t in tasks if is_open(t)]
+    todo.sort(key=lambda t: (t.get("due") or "9999", -float(t.get("remaining_hours") or 0)))
+    for t in todo:
+        need = float(t.get("remaining_hours") or 0)
+        due = d(t.get("due"))
+        last = min(due, days[-1]) if due else days[-1]
+        first_day = None
+        for dd in days:
+            if dd > last:
+                break
+            room = cap[dd] - load[dd]
+            if room <= 0.25:
+                continue
+            take = min(need, room, 3.0)
+            load[dd] += take; need -= take
+            first_day = first_day or dd
+            if need <= 1e-9:
+                break
+        if first_day is None:
+            first_day = max(today, due) if due else today
+        assign[t["id"]] = first_day.isoformat()
+        if need > 1e-9:
+            overflow.append({"id": t["id"], "title": t["title"], "short": round(need, 2)})
+    return {"assign": assign, "overflow": overflow, "load": {dd.isoformat(): round(v, 2) for dd, v in load.items() if v}}
+
+
 def streak(done_dates: Iterable[str], today: dt.date) -> int:
     s = {d(x) for x in done_dates if x}
     n, day = 0, today

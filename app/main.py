@@ -180,7 +180,9 @@ class GoalCreate(GoalIn):
 
 @app.post("/api/goals/decompose")
 def decompose(g: GoalIn, u: dict = Depends(current_user)):
-    return {"tasks": llm.decompose_goal(g.title, g.due, today()), "llm": "deepseek" if llm.available() else "stub"}
+    ctx = [] if os.environ.get("DENGJIE_NO_NET") == "1" else llm.enrich(g.title)
+    return {"tasks": llm.decompose_goal(g.title, g.due, today(), ctx), "context": ctx,
+            "llm": "deepseek" if llm.available() else "stub"}
 
 
 class DiscussIn(GoalIn):
@@ -245,7 +247,84 @@ DEMO_SCHEDULE = """高等数学(1) 周一 3-4节 1-16周 东上院101 张老师
 高等数学(1) 周四 3-4节 1-16周 东上院101 张老师
 体育 周四 7-8节 1-16周 体育馆
 线性代数 周五 3-4节 1-16周 东下院305
-大学物理实验 周五 5-8节 3-14周(单) 物理实验中心"""
+大学物理实验 周五 5-8节 3-14周(单) 物理实验中心
+综合实践 周六 3-4节 1-16周 学生创新中心
+综合实践 周日 5-6节 2-16周(双) 学生创新中心"""
+
+
+SAMPLE_BUNDLE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tools", "sample-bundle.json")
+
+
+@app.get("/api/sample-bundle")
+def sample_bundle():
+    with open(SAMPLE_BUNDLE_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+
+@app.post("/api/import/sample")
+def import_sample(u: dict = Depends(current_user)):
+    """演示用:直接导入 tools/sample-bundle.json(与一键提示词同格式)。"""
+    with open(SAMPLE_BUNDLE_PATH, encoding="utf-8") as f:
+        return import_bundle(BundleIn(text=f.read()), u)
+
+
+# 交大作息:节次 → (开始, 结束),24 小时制小数
+SLOT_TIMES = {1: (8.0, 8.75), 2: (8.917, 9.667), 3: (10.0, 10.75), 4: (10.917, 11.667), 5: (12.917, 13.667), 6: (13.833, 14.583),
+              7: (14.917, 15.667), 8: (15.833, 16.583), 9: (16.75, 17.5), 10: (18.0, 18.75), 11: (18.917, 19.667), 12: (19.833, 20.583), 13: (20.75, 21.5)}
+
+
+def build_timeline(classes: list[dict], tasks: list[dict], day_start: float = 8.0, day_end: float = 22.0) -> list[dict]:
+    """把课按作息表放到时间轴,任务按(截止日近、剩余估时小)顺序填进空档;每块最多 3 小时。返回按开始时间排序的块。"""
+    blocks = []
+    for c in classes:
+        a, b = c.get("slot_start") or 1, c.get("slot_end") or (c.get("slot_start") or 1)
+        if a in SLOT_TIMES and b in SLOT_TIMES:
+            blocks.append({"kind": "class", "start": SLOT_TIMES[a][0], "end": SLOT_TIMES[b][1], "title": c["name"],
+                           "sub": c.get("location") or "", "id": c.get("id")})
+    busy = sorted((x["start"], x["end"]) for x in blocks)
+    cursor = day_start
+    for t in sorted(tasks, key=lambda x: (x.get("due") or "9999", float(x.get("remaining_hours") or 0))):
+        need = min(3.0, max(0.5, float(t.get("remaining_hours") or 1)))
+        placed = False
+        while cursor + need <= day_end + 1e-9:
+            clash = next(((s, e) for s, e in busy if s < cursor + need and e > cursor), None)
+            if clash:
+                cursor = clash[1] + 0.25; continue
+            blocks.append({"kind": "task", "start": cursor, "end": cursor + need, "title": t["title"], "sub": f"预计 {t.get('remaining_hours')}h", "id": t["id"],
+                           "source": t.get("source"), "goal_id": t.get("goal_id")})
+            busy.append((cursor, cursor + need)); busy.sort(); cursor += need + 0.25; placed = True; break
+        if not placed:
+            blocks.append({"kind": "task", "start": None, "end": None, "title": t["title"], "sub": "今天排不下", "id": t["id"],
+                           "source": t.get("source"), "goal_id": t.get("goal_id")})
+    blocks.sort(key=lambda b: (b["start"] is None, b["start"] or 0))
+    return blocks
+
+
+@app.post("/api/plan/auto")
+def plan_auto(u: dict = Depends(current_user)):
+    """一键排程:把已确认任务摊到接下来两周的各天(课时扣减后的日容量),写回 scheduled_date。"""
+    t = today()
+    slots = _slots(u["id"])
+    cbd = {}
+    for i in range(14):
+        dd = t + dt.timedelta(days=i)
+        wk = rules.week_number(_semester_start(u), dd)
+        cls = [] if (_semester_start(u) and wk is None) else [s for s in slots if s["day"] == dd.weekday() + 1 and (wk is None or not s["weeks"] or wk in s["weeks"])]
+        cbd[dd.isoformat()] = rules.class_hours_for_week(cls, None)
+    plan = rules.plan_days(_my_tasks(u["id"]), t, u["weekly_hours"] / 7, 14, cbd)
+    for tid, date in plan["assign"].items():
+        db.run("UPDATE tasks SET scheduled_date=? WHERE id=? AND user_id=?", (date, tid, u["id"]))
+    return {"planned": len(plan["assign"]), "overflow": plan["overflow"], "load": plan["load"]}
+
+
+@app.get("/api/timeline")
+def timeline(date: str | None = None, u: dict = Depends(current_user)):
+    day = rules.d(date) or today()
+    wk = rules.week_number(_semester_start(u), day)
+    classes = [] if (_semester_start(u) and wk is None) else [s for s in _slots(u["id"]) if s["day"] == day.weekday() + 1 and (wk is None or not s["weeks"] or wk in s["weeks"])]
+    tasks = rules.today_tasks(_my_tasks(u["id"]), day) if day == today() else \
+        [x for x in _my_tasks(u["id"]) if x["status"] == "confirmed" and (x["scheduled_date"] or x["due"]) == day.isoformat()]
+    return {"date": day.isoformat(), "blocks": build_timeline(classes, tasks)}
 
 
 @app.post("/api/demo/reset")
@@ -452,6 +531,8 @@ async def schedule_upload(file: UploadFile = File(...), u: dict = Depends(curren
     name = (file.filename or "").lower()
     if name.endswith(".pdf") or data[:4] == b"%PDF":
         text = _pdf_text(data)
+    elif name.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")) or data[:4] in (b"\x89PNG", b"\xff\xd8\xff\xe0", b"\xff\xd8\xff\xe1"):
+        raise HTTPException(501, "图片请在浏览器端识别(页面会自动 OCR);服务器不做图片识别")
     else:
         text = data.decode("utf-8", "ignore")
     if not text.strip():
@@ -630,8 +711,13 @@ def today_view(u: dict = Depends(current_user)):
     tasks = _my_tasks(u["id"])
     wk = rules.week_number(_semester_start(u), t)
     classes = [] if (_semester_start(u) and wk is None) else [s for s in _slots(u["id"]) if s["day"] == t.weekday() + 1 and (wk is None or not s["weeks"] or wk in s["weeks"])]
-    return {"date": t.isoformat(), "tasks": rules.today_tasks(tasks, t), "streak": rules.streak(_done_dates(u["id"]), t),
-            "pending": [x for x in tasks if x["status"] == "pending"], "classes": classes, "week_no": wk}
+    todays = rules.today_tasks(tasks, t)
+    pc = {r["task_id"]: r["c"] for r in db.rows("SELECT task_id, COUNT(*) c FROM progress_events WHERE user_id=? AND action='postpone' GROUP BY task_id", (u["id"],))}
+    for x in todays:
+        x["postponed"] = pc.get(x["id"], 0)
+    return {"date": t.isoformat(), "tasks": todays, "streak": rules.streak(_done_dates(u["id"]), t),
+            "pending": [x for x in tasks if x["status"] == "pending"], "classes": classes, "week_no": wk,
+            "timeline": build_timeline(classes, todays)}
 
 
 @app.post("/api/review/{tid}/done")
@@ -650,7 +736,11 @@ def review_postpone(tid: int, u: dict = Depends(current_user)):
     db.run("UPDATE tasks SET scheduled_date=? WHERE id=?", (new.isoformat(), tid))
     db.run("INSERT INTO progress_events(user_id,task_id,action,at) VALUES(?,?,?,?)", (u["id"], tid, "postpone", now()))
     warn = bool(t["due"]) and new > rules.d(t["due"])
-    return {"ok": True, "scheduled_date": new.isoformat(), "past_due": warn}
+    n = db.row("SELECT COUNT(*) c FROM progress_events WHERE task_id=? AND action='postpone'", (tid,))["c"]
+    goal = db.row("SELECT title,due FROM goals WHERE id=?", (t["goal_id"],)) if t["goal_id"] else None
+    goal_risk = bool(goal and goal["due"] and new > rules.d(goal["due"]))
+    return {"ok": True, "scheduled_date": new.isoformat(), "past_due": warn, "postponed": n,
+            "goal": goal["title"] if goal else None, "goal_due": goal["due"] if goal else None, "goal_risk": goal_risk}
 
 
 @app.post("/api/review/too_tired/preview")
@@ -687,9 +777,51 @@ def too_tired_apply(p: PlanIn, u: dict = Depends(current_user)):
 
 @app.post("/api/settings/reduce_weekly")
 def reduce_weekly(u: dict = Depends(current_user)):
+    """PRD 规则 4:连续太累 → 本周可投入下调两成。"""
     h = round(u["weekly_hours"] * 0.8, 1)
     db.run("UPDATE users SET weekly_hours=? WHERE id=?", (h, u["id"]))
     return {"weekly_hours": h}
+
+
+@app.post("/api/settings/boost_weekly")
+def boost_weekly(u: dict = Depends(current_user)):
+    """规则 4 的反向:今天全做完还有余力 → 本周可投入上调一成(承载力上修)。"""
+    h = round(u["weekly_hours"] * 1.1, 1)
+    db.run("UPDATE users SET weekly_hours=? WHERE id=?", (h, u["id"]))
+    db.run("INSERT INTO progress_events(user_id,task_id,action,at) VALUES(?,?,?,?)", (u["id"], None, "spare", now()))
+    return {"weekly_hours": h}
+
+
+@app.post("/api/review/pull_tomorrow")
+def pull_tomorrow(u: dict = Depends(current_user)):
+    """余力:把明天最早截止的一件拉到今天。"""
+    t = today(); tm = (t + dt.timedelta(days=1)).isoformat()
+    cand = [x for x in _my_tasks(u["id"]) if x["status"] == "confirmed" and (x["scheduled_date"] or x["due"]) == tm]
+    if not cand:
+        raise HTTPException(404, "明天没有可以提前的任务")
+    cand.sort(key=lambda x: (x["due"] or "9999", float(x["remaining_hours"] or 0)))
+    db.run("UPDATE tasks SET scheduled_date=? WHERE id=?", (t.isoformat(), cand[0]["id"]))
+    return {"pulled": cand[0]["title"], "id": cand[0]["id"]}
+
+
+class BatchEst(BaseModel):
+    items: list[dict]   # [{id, remaining_hours, est_hours?}]
+
+
+@app.patch("/api/tasks_batch")   # 不能放在 /api/tasks/{tid} 下面,会被当成 tid
+def tasks_batch(b: BatchEst, u: dict = Depends(current_user)):
+    """批量校准估时(PRD:复盘时用户修正剩余估时)。"""
+    n = 0
+    for it in b.items:
+        t = _own_task(int(it["id"]), u["id"])
+        rem = it.get("remaining_hours")
+        if rem is None:
+            continue
+        rem = max(0.0, float(rem))
+        est = float(it.get("est_hours") or max(float(t["est_hours"] or 0), rem))
+        db.run("UPDATE tasks SET remaining_hours=?, est_hours=? WHERE id=?", (rem, max(est, rem), int(it["id"])))
+        n += 1
+    return {"updated": n}
 
 
 # ── Canvas ──────────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import unittest
 os.environ["DENGJIE_DB"] = os.path.join(tempfile.mkdtemp(), "v3.db")
 os.environ["LLM_FORCE_STUB"] = "1"
 os.environ["DENGJIE_TODAY"] = "2026-09-16"
+os.environ["DENGJIE_NO_NET"] = "1"
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -56,7 +57,7 @@ class V3(unittest.TestCase):
 
     def test_06_demo_seed_reset_and_delete_goal(self):
         r = self.c.post("/api/demo/seed").json(); self.assertTrue(r["ok"]); self.assertLess(r["weekly_hours"], 42)
-        st = self.c.get("/api/integrations/status").json(); self.assertEqual(st["schedule_slots"], 10)
+        st = self.c.get("/api/integrations/status").json(); self.assertEqual(st["schedule_slots"], 12)
         t = self.c.get("/api/today").json(); self.assertGreaterEqual(len(t["pending"]), 4); self.assertTrue(t["classes"])  # 09-16 周三有课
         gid = r["goal_id"]
         self.assertEqual(self.c.delete(f"/api/goals/{gid}").status_code, 200)
@@ -64,6 +65,57 @@ class V3(unittest.TestCase):
         self.assertFalse(any(x["goal_id"] == gid for d in m["days"] for x in d["tasks"]))   # 删目标后日历同步消失
         self.assertEqual(self.c.delete(f"/api/goals/{gid}").status_code, 404)
         self.c.post("/api/demo/reset"); self.assertEqual(self.c.get("/api/goals").json(), []); self.assertEqual(self.c.get("/api/schedule").json(), [])
+
+    def test_07_sample_timeline_postpone(self):
+        r = self.c.post("/api/import/sample").json(); self.assertEqual(r["schedule"], 12); self.assertEqual(r["canvas_tasks"] + r["mail_tasks"], 6)
+        names = {s["name"] for s in self.c.get("/api/sample-bundle").json()["schedule"]}; self.assertIn("高等数学(1)", names); self.assertIn("综合实践", names)
+        a = self.c.post("/api/tasks", json={"title": "今天的大活", "est_hours": 5, "due": "2026-09-16", "scheduled_date": "2026-09-16"}).json()["id"]
+        t = self.c.get("/api/today").json()
+        kinds = [b["kind"] for b in t["timeline"]]; self.assertIn("class", kinds); self.assertIn("task", kinds)
+        cls = [b for b in t["timeline"] if b["kind"] == "class"]; self.assertEqual(cls[0]["start"], 14.917)   # 09-16 第 1 周:大学物理(双周)不上,思修 7-8 节 14:55 起
+        task = next(b for b in t["timeline"] if b["id"] == a); self.assertIsNotNone(task["start"]); self.assertLessEqual(task["end"] - task["start"], 3.0)
+        for b in t["timeline"]:
+            for c in t["timeline"]:
+                if b is not c and b["start"] is not None and c["start"] is not None:
+                    self.assertTrue(b["end"] <= c["start"] + 1e-9 or c["end"] <= b["start"] + 1e-9, "时间轴块重叠")
+        tl = self.c.get("/api/timeline?date=2026-09-17").json(); self.assertEqual(tl["date"], "2026-09-17")
+        r = self.c.post(f"/api/review/{a}/postpone").json(); self.assertEqual(r["postponed"], 1); self.assertTrue(r["past_due"])
+        self.assertEqual(self.c.get("/api/today").json()["tasks"], [x for x in self.c.get("/api/today").json()["tasks"] if x["id"] != a])
+        r = self.c.post("/api/schedule/upload", files={"file": ("kb.png", b"\x89PNG\r\n\x1a\n", "image/png")}); self.assertEqual(r.status_code, 501)
+        r = self.c.post("/api/schedule/upload", files={"file": ("kb.md", "| 节次 | 星期一 |\n|---|---|\n| 第 3-4 节 | 高等数学 周一 3-4节 1-16周 |\n".encode(), "text/markdown")}); self.assertEqual(r.status_code, 200)
+
+    def test_09_plan_auto(self):
+        from app import rules
+        import datetime as dt
+        T = lambda i, h, due: {"id": i, "title": f"t{i}", "status": "confirmed", "remaining_hours": h, "due": due}
+        p = rules.plan_days([T(1, 4, "2026-09-18"), T(2, 2, "2026-09-17"), T(3, 9, "2026-09-30"), T(4, 5, "2026-09-16")], dt.date(2026, 9, 16), 4.0, 14, {"2026-09-16": 1.5})
+        self.assertEqual(p["assign"][4], "2026-09-16")                # 截止最近先排,当天容量 4−1.5=2.5 → 拆块
+        self.assertTrue(any(o["id"] == 4 for o in p["overflow"]))      # 5h 在截止日前放不完
+        self.assertEqual(p["assign"][2], "2026-09-17")
+        self.assertTrue(p["assign"][3] >= "2026-09-18")
+        self.assertTrue(all(v <= 4.0 + 1e-9 for v in p["load"].values()))
+        self.c.post("/api/tasks", json={"title": "排程用", "est_hours": 2, "due": "2026-09-20"})
+        r = self.c.post("/api/plan/auto").json(); self.assertGreaterEqual(r["planned"], 1)
+        from app.llm import merge_adjacent
+        m = merge_adjacent([{"name": "实验", "day": 5, "slot_start": 5, "slot_end": 6, "weeks": [3], "location": None, "teacher": None},
+                            {"name": "实验", "day": 5, "slot_start": 7, "slot_end": 8, "weeks": [3], "location": "中心", "teacher": None}])
+        self.assertEqual((len(m), m[0]["slot_start"], m[0]["slot_end"], m[0]["location"]), (1, 5, 8, "中心"))
+
+    def test_10_capacity_and_batch(self):
+        me = self.c.get("/api/me").json(); h0 = me["weekly_hours"]
+        r = self.c.post("/api/settings/boost_weekly").json(); self.assertAlmostEqual(r["weekly_hours"], round(h0 * 1.1, 1))
+        a = self.c.post("/api/tasks", json={"title": "明天的", "est_hours": 2, "due": "2026-09-17", "scheduled_date": "2026-09-17"}).json()["id"]
+        r = self.c.post("/api/review/pull_tomorrow").json(); self.assertEqual(r["id"], a)
+        self.assertIn(a, [t["id"] for t in self.c.get("/api/today").json()["tasks"]])
+        r = self.c.patch("/api/tasks_batch", json={"items": [{"id": a, "remaining_hours": 0.5}, {"id": a, "remaining_hours": None}]}).json(); self.assertEqual(r["updated"], 1)
+        t = next(x for x in self.c.get("/api/tasks").json() if x["id"] == a); self.assertEqual(t["remaining_hours"], 0.5); self.assertEqual(t["est_hours"], 2.0)
+        self.assertEqual(self.c.patch("/api/tasks_batch", json={"items": [{"id": 99999, "remaining_hours": 1}]}).status_code, 404)
+
+    def test_08_keywords(self):
+        from app import llm
+        self.assertEqual(llm._keywords("共读《Analysis I》前四章"), ["Analysis I"])
+        self.assertIn("MIT 18.01", llm._keywords("期中前刷完 MIT 18.01 前四单元"))
+        self.assertEqual(llm._keywords("把绩点稳住"), [])
 
     def test_05_group_tasks_and_rate(self):
         g = self.c.post("/api/groups", json={"name": "共读"}).json()

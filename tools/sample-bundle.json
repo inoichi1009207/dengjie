@@ -1,0 +1,330 @@
+{
+  "schedule": [
+    {
+      "name": "大学英语",
+      "teacher": null,
+      "location": "东中院205",
+      "day": 1,
+      "slot_start": 7,
+      "slot_end": 8,
+      "weeks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "name": "高等数学(1)",
+      "teacher": null,
+      "location": "东上院101",
+      "day": 1,
+      "slot_start": 3,
+      "slot_end": 4,
+      "weeks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "name": "程序设计思想与方法",
+      "teacher": null,
+      "location": "东上院203",
+      "day": 2,
+      "slot_start": 5,
+      "slot_end": 6,
+      "weeks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "name": "线性代数",
+      "teacher": null,
+      "location": "东下院305",
+      "day": 2,
+      "slot_start": 1,
+      "slot_end": 2,
+      "weeks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "name": "大学物理",
+      "teacher": null,
+      "location": "东下院201",
+      "day": 3,
+      "slot_start": 3,
+      "slot_end": 4,
+      "weeks": [
+        2,
+        4,
+        6,
+        8,
+        10,
+        12,
+        14,
+        16
+      ]
+    },
+    {
+      "name": "思想道德与法治",
+      "teacher": null,
+      "location": "东中院101",
+      "day": 3,
+      "slot_start": 7,
+      "slot_end": 8,
+      "weeks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "name": "体育",
+      "teacher": null,
+      "location": "体育馆",
+      "day": 4,
+      "slot_start": 7,
+      "slot_end": 8,
+      "weeks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "name": "高等数学(1)",
+      "teacher": null,
+      "location": "东上院101",
+      "day": 4,
+      "slot_start": 3,
+      "slot_end": 4,
+      "weeks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "name": "大学物理实验",
+      "teacher": null,
+      "location": "物理实验中心",
+      "day": 5,
+      "slot_start": 5,
+      "slot_end": 8,
+      "weeks": [
+        3,
+        5,
+        7,
+        9,
+        11,
+        13
+      ]
+    },
+    {
+      "name": "线性代数",
+      "teacher": null,
+      "location": "东下院305",
+      "day": 5,
+      "slot_start": 3,
+      "slot_end": 4,
+      "weeks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "name": "综合实践",
+      "teacher": null,
+      "location": "学生创新中心",
+      "day": 6,
+      "slot_start": 3,
+      "slot_end": 4,
+      "weeks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "name": "综合实践",
+      "teacher": null,
+      "location": "学生创新中心",
+      "day": 7,
+      "slot_start": 5,
+      "slot_end": 6,
+      "weeks": [
+        2,
+        4,
+        6,
+        8,
+        10,
+        12,
+        14,
+        16
+      ]
+    }
+  ],
+  "canvas_tasks": [
+    {
+      "external_id": "sample:canvas:1",
+      "title": "[高等数学(1)] 作业 2:极限与连续",
+      "due": "2026-09-18",
+      "est_hours": 2
+    },
+    {
+      "external_id": "sample:canvas:2",
+      "title": "[程序设计思想与方法] Lab 1 提交",
+      "due": "2026-09-20",
+      "est_hours": 3
+    },
+    {
+      "external_id": "sample:canvas:3",
+      "title": "[大学物理] 第 1 章习题",
+      "due": "2026-09-23",
+      "est_hours": 2
+    }
+  ],
+  "mail_tasks": [
+    {
+      "external_id": "sample:mail:1",
+      "title": "提交青洋奖学金申请表及证明材料",
+      "due": "2026-09-20",
+      "est_hours": 2
+    },
+    {
+      "external_id": "sample:mail:2",
+      "title": "完成 2026 秋季学期返校注册报到",
+      "due": "2026-09-15",
+      "est_hours": 0.5
+    },
+    {
+      "external_id": "sample:mail:3",
+      "title": "在选课系统确认本学期课程",
+      "due": "2026-09-27",
+      "est_hours": 1
+    }
+  ]
+}

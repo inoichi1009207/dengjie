@@ -61,20 +61,24 @@
         <div class="card">
           <h2>今天的课 <span id="today-week" class="muted"></span></h2>
           <ul id="today-classes" class="tasks"></ul>
-          <h2 style="margin-top:14px">今天要做的</h2>
+          <h2 style="margin-top:14px">今天要做的任务 <span class="muted">长期目标请到「目标」页立,拆出的任务会按日期出现在这里</span></h2>
           <ul id="today-list" class="tasks"></ul>
           <form id="quick-add" class="quick-add">
-            <input id="qa-title" placeholder="直接加一件事,比如「复习线代第 2 章」" required>
-            <input id="qa-hours" type="number" step="0.5" min="0.5" value="1" title="预计小时">
-            <input id="qa-due" type="date" title="截止日">
-            <button class="primary">添加</button>
+            <label>任务<input id="qa-title" placeholder="比如「复习线代第 2 章」" required></label>
+            <label>预计小时<input id="qa-hours" type="number" step="0.5" min="0.5" value="1"></label>
+            <label>截止日<input id="qa-due" type="date"></label>
+            <button class="primary">添加任务</button>
           </form>
-          <p class="tired-row">今天状态不好? <button id="too-tired" class="link">让登阶把明天排轻一点 →</button></p>
+          <p class="tired-row">今天状态不好? <button id="too-tired" class="link">让登阶把明天排轻一点 →</button> <span class="muted">· 日承载力 <b id="daily-cap" class="num"></b> 小时(本周可投入 ÷ 7)</span></p>
           <div id="tired-preview" class="preview" hidden></div>
+          <div id="spare-card" class="preview" hidden></div>
+          <p class="tired-row"><button id="calib-toggle" class="link">校准估时 →</button> <span class="muted">复盘时把剩余小时改准,时间账才准</span></p>
+          <div id="calib-panel" hidden></div>
+          <p id="toast" class="toast" hidden></p>
         </div>
         <div class="card">
-          <h2>待确认 <span class="muted">来自 Canvas / 邮件,勾选后才计入</span></h2>
-          <ul id="pending-list" class="tasks"></ul>
+          <h2>今日时间轴 <span class="muted">课按交大作息,任务填进空档</span></h2>
+          <div id="today-timeline" class="timeline"></div>
         </div>
       </div>
     </section>
@@ -130,9 +134,9 @@
       <div class="card">
         <h2>一键导入 <span class="muted">把提示词交给你自己的 AI 助手,它回来的 JSON 粘在这里</span></h2>
         <p class="hint">Claude Code、Codex、sjtu-agent 等都行。提示词里写清了课表、Canvas 作业、邮箱待办三部分怎么取、按什么格式回。密码只经过你自己的工具。做不到的部分助手会留空,其余照常导入;任务一律先进「待确认」。</p>
-        <div class="row"><button id="prompt-copy" class="primary">复制提示词</button><a href="/api/prompt" target="_blank" class="link-a">查看提示词</a><span id="prompt-msg" class="hint"></span></div>
+        <div class="row"><button id="prompt-copy" class="primary">复制提示词</button><a href="/api/prompt" target="_blank" class="link-a">查看提示词</a><a href="/api/sample-bundle" target="_blank" class="link-a">范例 JSON</a><span id="prompt-msg" class="hint"></span></div>
         <textarea id="bundle-text" rows="5" placeholder='粘贴 AI 返回的 JSON,形如 {"schedule":[...],"canvas_tasks":[...],"mail_tasks":[...]}'></textarea>
-        <div class="row"><button id="bundle-import" class="primary">导入</button><span id="bundle-msg" class="hint"></span></div>
+        <div class="row"><button id="bundle-import" class="primary">导入</button><label class="inline"><input id="demo-mode" type="checkbox"> 演示模式:点「导入」直接灌示范数据</label><span id="bundle-msg" class="hint"></span></div>
       </div>
       <div id="pending-panel" class="card" hidden>
         <h2>待确认 <span class="muted">导入的作业和邮件事项,点「计入」才进任务清单</span></h2>
@@ -141,8 +145,8 @@
       <div class="int-grid">
         <div class="card">
           <h2>课表 <span id="int-sched-status" class="status"></span></h2>
-          <p class="hint">教学信息网导出的课表 PDF 直接上传;或把课表文字粘贴到下面。保存后本周可投入时长按「42 小时 − 课时」自动更新。</p>
-          <div class="row"><input id="sch-file" type="file" accept=".pdf,.txt,.csv,application/pdf,text/plain"><span id="sch-file-msg" class="hint"></span></div>
+          <p class="hint">导入课表:教学信息网导出的 PDF、课表截图(png/jpg)、Markdown 或文本文件都行,AI 会自己读。也可以把课表文字直接粘贴到下面。保存后本周可投入时长按「42 小时 − 课时」自动更新。</p>
+          <div class="row"><input id="sch-file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.md,.txt,.csv,image/*,application/pdf,text/plain,text/markdown"><span id="sch-file-msg" class="hint"></span></div>
           <textarea id="sch-text" rows="6" placeholder="或粘贴课表文字"></textarea>
           <div class="row"><button id="sch-parse" class="primary">解析</button><span id="sch-msg" class="hint"></span></div>
           <div id="sch-preview" hidden>
