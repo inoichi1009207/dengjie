@@ -279,6 +279,50 @@ def parse_schedule_regex(text: str) -> list[dict]:
     return slots
 
 
+# ── 太累了:只给建议的对话 ───────────────────────────────────────────────
+
+_TIRED_SYS = (
+    "你是交大学生的学习规划助手。用户今天说「太累了」并写了原因。你**只给建议,不替他改任何安排**:"
+    "结合他今天没做完的任务、明天的安排上限和原因,用 3–5 条短句说:今晚该不该硬撑、明天怎么取舍、哪件事可以推或删、要不要调低本周承载力;"
+    "如果原因里有身体或情绪信号,先建议休息。中文,不超过 150 字,不要客套。"
+    "只输出 JSON:{\"advice\":str}。"
+)
+
+
+def tired_advice(reason: str, plan: dict, history: list[dict] | None = None) -> str:
+    facts = (f"今天未完成:{'、'.join(m['title'] for m in plan.get('moves', []) if m.get('from'))or '无'};"
+             f"明天上限 {plan.get('tomorrow_cap')} 小时;明天将只剩:{'、'.join(plan.get('tomorrow_titles') or []) or '无'};"
+             f"本周放不下:{'、'.join(o['title'] for o in plan.get('overflow', [])) or '无'}")
+    if available():
+        try:
+            from openai import OpenAI
+            client = OpenAI(base_url=_BASE, api_key=_KEY)
+            msgs = [{"role": "system", "content": _TIRED_SYS}, {"role": "user", "content": f"安排事实:{facts}"}]
+            msgs += [{"role": m.get("role", "user"), "content": str(m.get("content", ""))[:1000]} for m in (history or [])[-6:]]
+            msgs.append({"role": "user", "content": f"我太累了,原因:{reason}"})
+            r = client.chat.completions.create(model=_MODEL, temperature=0.4, response_format={"type": "json_object"}, messages=msgs)
+            out = json.loads(r.choices[0].message.content or "{}")
+            if out.get("advice"):
+                return str(out["advice"])[:400]
+        except Exception as e:
+            print("[llm] tired_advice failed:", e)
+    return f"(示例模式)今晚别硬撑。明天先做截止最近的一件;{facts.split(';')[2] if ';' in facts else ''}。连着累两天就把本周承载力调低两成。"
+
+
+# ── 每日复盘一句点评 ───────────────────────────────────────────────────
+
+def review_comment(stats: dict, note: str) -> str:
+    base = f"完成 {stats.get('done', 0)} 件、推迟 {stats.get('postponed', 0)} 件,连续 {stats.get('streak', 0)} 天。"
+    if not available():
+        return base + ("记下来就是进步。" if note else "")
+    try:
+        out = _chat_json("你是温和但不客套的学习教练。根据今天的数据和用户一句话复盘,回一句不超过 40 字的中文点评,指出一个明天可以改的点。只输出 JSON {\"text\":str}",
+                         f"数据:{base} 用户复盘:{note or '(没写)'}")
+        return out.get("text") or base
+    except Exception:
+        return base
+
+
 # ── 复盘文案 ──────────────────────────────────────────────────────────────
 
 def replan_sentence(plan: dict) -> str:

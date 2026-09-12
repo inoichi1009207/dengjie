@@ -945,6 +945,52 @@ def too_tired_apply(p: PlanIn, u: dict = Depends(current_user)):
     return {"ok": True, "moved": len(p.moves)}
 
 
+class TiredChatIn(BaseModel):
+    reason: str
+    history: list[dict] = []
+
+
+@app.post("/api/review/too_tired/advice")
+def too_tired_advice(b: TiredChatIn, u: dict = Depends(current_user)):
+    """太累了 → 填原因 → AI 只给建议,不动任何安排(动安排仍要用户点「就这么办」)。"""
+    if not b.reason.strip():
+        raise HTTPException(400, "写一句原因")
+    plan = rules.too_tired_plan(_my_tasks(u["id"]), today(), u["weekly_hours"] / 7)
+    return {"advice": llm.tired_advice(b.reason.strip(), plan, b.history)}
+
+
+class DailyReviewIn(BaseModel):
+    note: str = ""
+    mood: str | None = None   # good | ok | tired
+
+
+def _daily_stats(u: dict, t: dt.date) -> dict:
+    ds = t.isoformat()
+    ev = db.rows("SELECT action, COUNT(*) c FROM progress_events WHERE user_id=? AND substr(at,1,10)=? GROUP BY action", (u["id"], ds))
+    m = {r["action"]: r["c"] for r in ev}
+    done_today = [x for x in _my_tasks(u["id"]) if x["status"] == "done" and (x["done_at"] or "")[:10] == ds]
+    left = rules.today_tasks(_my_tasks(u["id"]), t)
+    return {"date": ds, "done": len(done_today), "done_hours": round(sum(float(x["est_hours"] or 0) for x in done_today), 1),
+            "postponed": m.get("postpone", 0), "too_tired": 1 if db.row("SELECT 1 FROM fatigue_events WHERE user_id=? AND date=?", (u["id"], ds)) else 0,
+            "left": len(left), "streak": rules.streak(_done_dates(u["id"]), t)}
+
+
+@app.get("/api/review/daily")
+def daily_review_get(date: str | None = None, u: dict = Depends(current_user)):
+    t = rules.d(date) or today()
+    row = db.row("SELECT note,mood,ai_comment,created FROM daily_reviews WHERE user_id=? AND date=?", (u["id"], t.isoformat()))
+    return {"stats": _daily_stats(u, t), "review": row}
+
+
+@app.post("/api/review/daily")
+def daily_review_post(b: DailyReviewIn, u: dict = Depends(current_user)):
+    t = today(); stats = _daily_stats(u, t)
+    comment = llm.review_comment(stats, b.note.strip())
+    db.run("INSERT INTO daily_reviews(user_id,date,note,mood,ai_comment,created) VALUES(?,?,?,?,?,?) ON CONFLICT(user_id,date) DO UPDATE SET note=excluded.note, mood=excluded.mood, ai_comment=excluded.ai_comment",
+           (u["id"], t.isoformat(), b.note.strip(), b.mood, comment, now()))
+    return {"stats": stats, "review": {"note": b.note.strip(), "mood": b.mood, "ai_comment": comment}}
+
+
 @app.post("/api/settings/reduce_weekly")
 def reduce_weekly(u: dict = Depends(current_user)):
     """PRD 规则 4:连续太累 → 本周可投入下调两成。"""

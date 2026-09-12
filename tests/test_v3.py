@@ -197,3 +197,21 @@ class V10(unittest.TestCase):
         r = c2.patch(f"/api/tasks/{tid}", json={"est_hours": 2}); self.assertEqual(r.json()["est_hours"], 2.0)
         c3 = TestClient(app); c3.post("/api/register", json={"username": "hal", "password": "pass1234"})
         self.assertEqual(c3.patch(f"/api/tasks/{tid}", json={"title": "x"}).status_code, 404)  # 非成员不能改
+
+
+class V11(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.c = TestClient(app)
+        assert cls.c.post("/api/register", json={"username": "ivy", "password": "pass1234"}).status_code == 200
+
+    def test_tired_advice_and_daily_review(self):
+        a = self.c.post("/api/tasks", json={"title": "今天的事", "est_hours": 2, "due": "2026-09-16", "scheduled_date": "2026-09-16"}).json()["id"]
+        self.assertEqual(self.c.post("/api/review/too_tired/advice", json={"reason": " "}).status_code, 400)
+        r = self.c.post("/api/review/too_tired/advice", json={"reason": "实验报告写到两点", "history": []}).json(); self.assertTrue(r["advice"])
+        self.assertEqual(next(x for x in self.c.get("/api/tasks").json() if x["id"] == a)["scheduled_date"], "2026-09-16")   # 只给建议,没动安排
+        self.c.post(f"/api/review/{a}/done")
+        r = self.c.post("/api/review/daily", json={"note": "今天效率还行", "mood": "good"}).json()
+        self.assertEqual((r["stats"]["done"], r["stats"]["streak"]), (1, 1)); self.assertTrue(r["review"]["ai_comment"])
+        r = self.c.get("/api/review/daily").json(); self.assertEqual(r["review"]["mood"], "good"); self.assertEqual(r["stats"]["done_hours"], 2.0)
+        r = self.c.post("/api/review/daily", json={"note": "改一下", "mood": "ok"}).json(); self.assertEqual(r["review"]["note"], "改一下")   # 同日覆盖

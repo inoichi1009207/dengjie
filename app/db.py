@@ -51,6 +51,7 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN remind_hour INTEGER",
     "ALTER TABLE users ADD COLUMN last_remind TEXT",
     "CREATE TABLE IF NOT EXISTS grades(id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, course TEXT NOT NULL, credit REAL, score REAL, term TEXT, UNIQUE(user_id, course, term))",
+    "CREATE TABLE IF NOT EXISTS daily_reviews(id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, date TEXT NOT NULL, note TEXT, mood TEXT, ai_comment TEXT, created TEXT NOT NULL, UNIQUE(user_id, date))",
     # 存量迁移:单个任务估时上限 3h(与 rules.MAX_TASK_HOURS 一致)
     "UPDATE tasks SET est_hours=MIN(est_hours,3.0), remaining_hours=MIN(remaining_hours,3.0) WHERE est_hours>3.0 OR remaining_hours>3.0",
 ]

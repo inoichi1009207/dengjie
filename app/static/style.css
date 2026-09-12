@@ -112,6 +112,12 @@ ul.tasks li.cls { border-left-color:var(--tc); } ul.tasks li.cls .t { color:var(
 label.inline { display:inline-flex; align-items:center; gap:6px; margin:0; font-size:13px; } label.inline input { width:auto; margin:0; }
 .toast { background:rgba(42,133,96,.12); border:1px solid var(--green); padding:8px 12px; margin-top:10px; color:#fff; font-size:13px; }
 .toast.warn { background:rgba(255,153,0,.10); border-color:var(--orange); }
+.review-box { margin-top:16px; padding-top:12px; border-top:1px solid var(--green-border); }
+.review-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:8px 0; } .review-stats div { background:rgba(0,8,6,.5); border:1px solid var(--green-border); padding:6px 8px; font-size:12px; color:var(--ink-dim); }
+.review-stats div b { display:block; font-family:var(--font-mono); font-size:18px; color:var(--yellow); }
+button.mood.active { border-color:var(--green); color:#fff; background:rgba(42,133,96,.2); }
+.ai-line { background:rgba(42,133,96,.10); border-left:3px solid var(--green); padding:8px 10px; color:#fff; font-size:13px; }
+.chat { display:grid; gap:6px; margin-top:8px; } .chat .msg { padding:6px 10px; font-size:13px; max-width:92%; } .chat .me { background:rgba(255,153,0,.12); border:1px solid rgba(255,153,0,.35); justify-self:end; } .chat .ai { background:rgba(42,133,96,.12); border:1px solid var(--green-border); justify-self:start; color:#fff; }
 /* 负载条 */
 .strip { display:flex; height:38px; background:rgba(0,8,6,.6); border:1px solid var(--green-border); overflow:hidden; }
 .strip .seg { position:relative; height:100%; background:var(--tc); opacity:.85; border-right:1px solid rgba(0,0,0,.5); display:flex; align-items:center; padding:0 6px; font-size:12px; color:#061008; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:6px; }

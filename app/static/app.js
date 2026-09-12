@@ -155,6 +155,7 @@ async function loadToday() {
     el("button", { class: "small primary", onclick: async () => { try { const r = await api("/api/review/pull_tomorrow", "POST"); toast(`已把「${r.pulled}」拉到今天`); } catch (e) { toast(e.message, true); } loadToday(); } }, "把明天的一件拉到今天"),
     el("button", { class: "small", onclick: async () => { const r = await api("/api/settings/boost_weekly", "POST"); toast(`本周可投入上调为 ${r.weekly_hours} 小时(日承载力 ${(r.weekly_hours / 7).toFixed(1)})`); loadToday(); } }, "承载力上调一成"))); }
   $("#calib-panel").hidden = true;
+  loadDailyReview().catch(() => {});
   const bn = $("#pending-banner"); bn.hidden = !d.pending.length;
   if (d.pending.length) { bn.innerHTML = ""; bn.append(el("span", {}, el("b", {}, `${d.pending.length} 项`), " 从 Canvas / 邮件导入的事项等你确认,确认后才算进这周的账。"), el("button", { class: "small primary", onclick: () => switchTab("integrations") }, "去接入页确认")); }
   updateBadge(d.pending.length);
@@ -176,6 +177,15 @@ $("#quick-add").onsubmit = async (e) => {
   await api("/api/tasks", "POST", { title: $("#qa-title").value.trim(), est_hours: +$("#qa-hours").value || 1, due, scheduled_date: due });
   $("#qa-title").value = ""; loadToday();
 };
+let MOOD = null;
+document.querySelectorAll("button.mood").forEach(b => b.onclick = () => { MOOD = b.dataset.mood; document.querySelectorAll("button.mood").forEach(x => x.classList.toggle("active", x === b)); });
+async function loadDailyReview() {
+  const r = await api("/api/review/daily"); const st = r.stats; const box = $("#review-stats"); box.innerHTML = "";
+  box.append(el("div", {}, "完成", el("b", {}, `${st.done} 件`), `${st.done_hours}h`), el("div", {}, "推迟", el("b", {}, `${st.postponed} 件`)), el("div", {}, "还剩", el("b", {}, `${st.left} 件`)), el("div", {}, "连续", el("b", {}, `${st.streak} 天`)));
+  if (r.review) { $("#review-note").value = r.review.note || ""; MOOD = r.review.mood; document.querySelectorAll("button.mood").forEach(x => x.classList.toggle("active", x.dataset.mood === MOOD)); if (r.review.ai_comment) { $("#review-ai").textContent = "AI:" + r.review.ai_comment; $("#review-ai").hidden = false; } }
+  else { $("#review-ai").hidden = true; }
+}
+$("#review-save").onclick = async () => { $("#review-msg").textContent = "记录中…"; try { const r = await api("/api/review/daily", "POST", { note: $("#review-note").value, mood: MOOD }); $("#review-msg").textContent = "已记下"; $("#review-ai").textContent = "AI:" + r.review.ai_comment; $("#review-ai").hidden = false; } catch (e) { $("#review-msg").textContent = e.message; } };
 $("#calib-toggle").onclick = async () => {
   const p = $("#calib-panel"); if (!p.hidden) { p.hidden = true; return; }
   const ts = (await api("/api/today")).tasks;
@@ -199,6 +209,13 @@ $("#too-tired").onclick = async () => {
   for (const o of p.overflow) ul.append(el("li", {}, el("div", { class: "t" }, o.title, el("span", { class: "tag overdue" }, "本周放不下,回到截止日等你取舍"))));
   if (!p.moves.length && !p.overflow.length) ul.append(el("li", { class: "empty" }, "今天和明天本来就没什么安排。"));
   box.append(ul);
+  // 填原因 → AI 只给建议(不动安排)
+  let TIRED_HIST = [];
+  const chat = el("div", { class: "chat" }); const ri = el("input", { class: "grow", placeholder: "为什么累?比如「实验报告写到两点」「今天课太满」" });
+  const ask = async () => { const r0 = ri.value.trim(); if (!r0) return; chat.append(el("div", { class: "msg me" }, r0)); ri.value = ""; const thinking = el("div", { class: "msg ai" }, "…"); chat.append(thinking);
+    try { const r = await api("/api/review/too_tired/advice", "POST", { reason: r0, history: TIRED_HIST }); thinking.textContent = r.advice; TIRED_HIST.push({ role: "user", content: r0 }, { role: "assistant", content: r.advice }); } catch (e) { thinking.textContent = e.message; } };
+  ri.addEventListener("keydown", e => { if (e.key === "Enter") ask(); });
+  box.append(el("p", { class: "hint", style: "margin-top:10px" }, "说说原因,AI 只给建议,不会替你改安排:"), el("div", { class: "row" }, ri, el("button", { class: "small", onclick: ask }, "问问 AI")), chat);
   if (p.advice) box.append(el("p", { class: "hint" }, p.advice, " ", p.advice_kind === "extend_due"
     ? el("button", { class: "small", onclick: () => switchTab("ddl") }, "去 DDL 调截止日")
     : el("button", { class: "small", onclick: async () => { const r = await api("/api/settings/reduce_weekly", "POST"); toast(`本周承载力已调为 ${r.weekly_hours} 小时`); loadToday(); } }, "采用,下调两成")));

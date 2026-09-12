@@ -77,6 +77,17 @@
           <div id="spare-card" class="preview" hidden></div>
           <p class="tired-row"><button id="calib-toggle" class="link">校准今天的估时 →</button> <span class="muted">复盘时把今天各件事的剩余小时改准,时间账才准</span></p>
           <div id="calib-panel" hidden></div>
+          <div class="review-box">
+            <h2>每日复盘</h2>
+            <div id="review-stats" class="review-stats"></div>
+            <div class="row">
+              <span class="muted">今天状态:</span>
+              <button class="small mood" data-mood="good">😄 顺</button><button class="small mood" data-mood="ok">😐 一般</button><button class="small mood" data-mood="tired">😩 累</button>
+            </div>
+            <textarea id="review-note" rows="2" placeholder="一句话复盘:今天做得怎么样,明天想改什么"></textarea>
+            <div class="row"><button id="review-save" class="primary">记下今天</button><span id="review-msg" class="hint"></span></div>
+            <p id="review-ai" class="ai-line" hidden></p>
+          </div>
         </div>
         <div class="card">
           <h2>近期截止 <span class="muted">七天内到期的任务</span></h2>
