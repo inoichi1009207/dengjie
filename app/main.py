@@ -23,10 +23,10 @@ COOKIE = "dj_session"
 
 
 def _demo_allowed(u) -> bool:
-    """演示凭据只对白名单账号回落(DENGJIE_DEMO_USERS,逗号分隔;缺省 demo,12),别的注册用户拿不到团队邮箱/令牌。"""
+    """演示凭据只对白名单账号回落(DENGJIE_DEMO_USERS,逗号分隔;缺省为空即无人可用),别的注册用户拿不到团队邮箱/令牌。"""
     if not u:
         return False
-    allowed = {x.strip() for x in os.environ.get("DENGJIE_DEMO_USERS", "demo,12").split(",") if x.strip()}
+    allowed = {x.strip() for x in os.environ.get("DENGJIE_DEMO_USERS", "").split(",") if x.strip()}
     return u.get("username") in allowed
 
 

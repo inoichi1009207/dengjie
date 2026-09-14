@@ -8,3 +8,6 @@ sync_result.json
 mima.txt
 *.txt.bak
 pfbz.txt
+ans.txt
+server.log
+*.log
