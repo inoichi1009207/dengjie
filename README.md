@@ -2,6 +2,8 @@
 
 让长期目标走进交大学生的每一周:AI 拆目标 → 任务池 → 周视图与本周容量缺口 → 每日复盘 → 小组共进。
 
+本项目为上海交通大学人工智能学院黑客松比赛的二等奖作品。
+
 ## 跑起来
 
 ```bash
@@ -48,26 +50,3 @@ tests/         python -m unittest
 ```bash
 python -m unittest -q
 ```
-
-## 部署给评委看(公网网址)
-
-代码就是一个普通的 FastAPI 服务,任何能跑 Docker 或 Python 的地方都行。两条现成路:
-
-**A. Render(免费,十分钟)**
-1. 把 `D:\dengjie` 推到 GitHub 仓库。
-2. Render 控制台 → New → Blueprint → 选该仓库,它会读 `render.yaml`。
-3. 在环境变量里填 `DEEPSEEK_API_KEY`(以及可选的 `DEMO_CANVAS_TOKEN`、`DEMO_MAIL_USER`、`DEMO_MAIL_PASS`)。
-4. 部署完成得到 `https://dengjie.onrender.com` 一类的网址。免费实例文件系统不持久,重新部署后数据清空;路演前别重新部署即可。
-
-**B. 云服务器(阿里云 / 腾讯云 学生机)**
-```bash
-git clone <仓库> && cd dengjie
-pip install -r requirements.txt
-echo "DEEPSEEK_API_KEY=..." > .env
-DENGJIE_DB=/srv/dengjie.db nohup python -m uvicorn app.main:app --host 0.0.0.0 --port 80 &
-```
-数据持久在 `/srv/dengjie.db`。域名与 HTTPS 可选,评委用 IP 也能访问。
-
-两条路 `apikey.txt` 都不上传(已 gitignore),密钥只走环境变量。
-
-> 安全提示:用户在设置页填的 Canvas 令牌与邮箱密码目前以明文存于 SQLite `users` 表(演示阶段设计)。请只用团队演示账号,不要接入真实个人凭据;正式版计划 Canvas 走 OAuth、邮箱不接真实用户。
